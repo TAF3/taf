@@ -69,6 +69,19 @@ def only_with_neutron_extension(extension):
     return decorator
 
 
+def only_with_service(service):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if self.has_service(service):
+                return func(self, *args, **kwargs)
+            else:
+                self.class_logger.error(('Function %s called that expects %s service '
+                                         ' which is not available.'), func.__name__, service)
+        return wrapper
+    return decorator
+
+
 class VirtualEnv(object):
     """
     @description  Main class of all test virtual environment using tempest.
@@ -101,14 +114,15 @@ class VirtualEnv(object):
     # Example: my_vIPS_image-fedora-bare.qcow2
     IMAGE_NAME_PATTERN = r'\S*{0}\S*-(?P<user>\w+)-(?P<cont_frmt>\w+)\.(?P<disk_frmt>\w+)'
 
-    def __init__(self, opts=None):
+    def __init__(self, opts=None, external_router=True):
         super(VirtualEnv, self).__init__()
         self.class_logger.info('Initializing virtual environment...')
         self.opts = opts
-        self.settings = self._get_settings(self.opts.env)
+        self.env_settings = self._get_settings(self.opts.env)
         self.tempest_path = self.opts.tempest_path
         self.reuse_venv = self.opts.reuse_venv
         self.neutron_extensions = None
+        self.services = None
 
         import tempest
         from tempest.scenario.manager import NetworkScenarioTest
@@ -134,13 +148,16 @@ class VirtualEnv(object):
         if self.has_neutron_extension('sfc'):
             self._add_sfc_client()
 
-        self.other_config = self.settings.get('other_configs', {})
+        if self.has_service('magnum'):
+            self._add_magnum_clients()
+
+        self.other_config = self.env_settings.get('other_configs', {})
         self.ovs_type = self.other_config.get('ovs_type')
 
         # create initial parameters required by all instances
-        self.images_path = self.settings.get("images_share_path")
+        self.images_path = self.env_settings.get("images_share_path")
         self.create_loginable_secgroup_rule()
-        self.key = self.handle.create_keypair()
+        self.ensure_keypair()
         self.tenant_id = self.handle.networks_client.tenant_id
 
         _default_spec = self.DPDK_FLAVOR_SPEC if self.is_DPDK() else self.OVS_FLAVOR_SPEC
@@ -150,7 +167,8 @@ class VirtualEnv(object):
         public_access_kwargs = {
             'try_reuse': self.reuse_venv,
             'name': self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-net'),
-            'tenant_id': self.tenant_id
+            'tenant_id': self.tenant_id,
+            'create_external_router': external_router
         }
         assert self.ensure_public_access(**public_access_kwargs)
 
@@ -162,20 +180,63 @@ class VirtualEnv(object):
             entry_name = custom_classes[entry_type]['NAME']
             setattr(self, entry_name, getattr(self.env, entry_name))
 
+    def ensure_keypair(self):
+        generate = False
+        key = {}
+        try:
+            keyfile = self.env_settings['ssh_key']
+            pubkeyfile = self.env_settings['ssh_pubkey']
+        except KeyError:
+            self.class_logger.debug("ssh key not provided, a new will be generated")
+            generate = True
+        else:
+            self.class_logger.debug("Reading private key from %s", keyfile)
+            self.class_logger.debug("Reading public key from %s", pubkeyfile)
+            try:
+                with open(keyfile, 'r') as stream:
+                    key['private_key'] = stream.read()
+                with open(pubkeyfile, 'r') as stream:
+                    key['public_key'] = stream.read()
+            except IOError as e:
+                self.class_logger.info("ssh key provided but can't be used! ({})".format(e))
+                generate = True
+            else:
+                client = self.handle.manager.keypairs_client
+                name = self.tempest_lib.common.utils.data_utils.rand_name('tempest-key')
+                self.key = client.create_keypair(name=name,
+                                                 public_key=key['public_key'])['keypair']
+                self.key['private_key'] = key['private_key']
+
+        if generate:
+            self.key = self.handle.create_keypair()
+
+        assert 'private_key' in self.key
+        assert 'public_key' in self.key
+
     def _get_neutron_extensions(self):
         if self.neutron_extensions is None:
             client = self.handle.admin_manager.network_extensions_client
             self.neutron_extensions = client.list_extensions()['extensions']
         return self.neutron_extensions
 
+    def _get_services(self):
+        if self.services is None:
+            client = self.handle.admin_manager.identity_services_client
+            self.services = client.list_services()['OS-KSADM:services']
+        return self.services
+
+    def has_service(self, service):
+        services = self._get_services()
+        return service in [s['name'] for s in services]
+
     def has_neutron_extension(self, extension):
         extensions = self._get_neutron_extensions()
         return extension in [e['alias'] for e in extensions]
 
     def _add_sfc_client(self):
-        from testlib.sfc_client import SfcClient
+        from testlib.tempest_clients.sfc_client import SfcClient
 
-        self.class_logger.debug('Adding SfcClient.')
+        self.class_logger.info('Adding SfcClient.')
 
         try:
             # FIXME: do I need admin_manager?
@@ -189,6 +250,11 @@ class VirtualEnv(object):
                 **self.handle.admin_manager.default_params)
         except Exception:
             self.class_logger.warning('Could not create sfc client!')
+
+    def _add_magnum_clients(self):
+        from .magnum import Magnum
+        self.class_logger.info('Adding Magnum clients.')
+        self.magnum = Magnum(self)
 
     def _get_settings(self, file_name=None):
         """
@@ -249,7 +315,7 @@ class VirtualEnv(object):
         return waiters.wait_for_server_status(self.handle.servers_client, vm_id, status)
 
     def ensure_public_access(self, try_reuse=False, networks_client=None, routers_client=None,
-                             name=None, tenant_id=None):
+                             name=None, tenant_id=None, create_external_router=True):
         """Create or reuse public/external router & network.
 
         :param bool try_reuse: attempt at resusing the public router/network or delete it
@@ -271,7 +337,7 @@ class VirtualEnv(object):
             tenant_id = self.tenant_id
 
         _net_cfg = self.config.network
-        _mgmt_ip_cidr = self.settings.get('mgmt_ip_cidr')
+        _mgmt_ip_cidr = self.env_settings.get('mgmt_ip_cidr')
         assert _mgmt_ip_cidr
         net_ip = netaddr.IPNetwork(_mgmt_ip_cidr)
 
@@ -310,17 +376,19 @@ class VirtualEnv(object):
 
         _net_cfg.public_network_id = public_network['id']
 
-        router_kwargs = {
-            'routers_client': routers_client,
-            'network_id': _net_cfg.public_network_id,
-            'tenant_id': tenant_id,
-            'enable_snat': True
-        }
-        public_router = self.create_router(**router_kwargs)
-        assert public_router
-        _net_cfg.public_router_id = public_router['id']
+        if create_external_router:
+            router_kwargs = {
+                'routers_client': routers_client,
+                'network_id': _net_cfg.public_network_id,
+                'tenant_id': tenant_id,
+                'enable_snat': True
+            }
+            public_router = self.create_router(**router_kwargs)
+            assert public_router
+            _net_cfg.public_router_id = public_router['id']
 
-        if _net_cfg.public_network_id and _net_cfg.public_router_id:
+        if _net_cfg.public_network_id and (_net_cfg.public_router_id or
+                                           not create_external_router):
             return True
 
         return False
@@ -1235,3 +1303,33 @@ class VirtualEnv(object):
 
     def delete_security_group_rule(self, rule_id):
         return self.handle.manager.security_group_rules_client.delete_security_group_rule(rule_id)
+
+    def get_all_instances(self):
+        client = self.handle.manager.servers_client
+
+        instances = [self.get_nova_instance(i['id'])
+                     for i in client.list_servers()['servers']]
+
+        return instances
+
+    def get_host_instance_dict(self, instances=None):
+        """
+        gets a dictionary of details of all instances in the current project grouped by hostId.
+        """
+        if instances is None:
+            instances = self.get_all_instances()
+
+        res = {}
+        for x in instances:
+            res.setdefault(x['hostId'], []).append(x)
+
+        return res
+
+    def enable_service(self, service):
+        client = self.handle.admin_manager.services_client
+        client.enable_service(host=service['host'], binary=service['binary'])
+
+    def disable_service(self, service):
+        client = self.handle.admin_manager.services_client
+        client.disable_service(host=service['host'], binary=service['binary'])
+        self.handle.addCleanup(self.enable_service, service)

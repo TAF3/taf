@@ -19,10 +19,8 @@ limitations under the License.
 """
 
 import os
-import sys
 from collections import namedtuple
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from utils.pyrrd.graph import CalculationDefinition, ColorAttributes  # pylint: disable=no-name-in-module
 from utils.pyrrd.graph import VariableDefinition, DataDefinition  # pylint: disable=no-name-in-module
 from utils.pyrrd.graph import Area, Graph, GraphPrint, Line  # pylint: disable=no-name-in-module
@@ -72,8 +70,8 @@ COLORS = (full_red, half_red, full_green, half_green, full_blue, half_blue, full
 
 # Graph properties for different RRD files
 TYPES = {'CPU': {'vertical_label': '"CPU usage [jiffies]"',
-                  'rigid': True,
-                  'y_grid': '10:5',
+                 'rigid': True,
+                 'y_grid': '10:5',
                  'upper_limit': 110},
          'MEMORY': {'units_exponent': 9, 'vertical_label': '"Memory usage [Gigabytes]"'},
          'INTERFACE': {'vertical_label': '"Network traffic [bits/sec]"',
@@ -82,8 +80,7 @@ TYPES = {'CPU': {'vertical_label': '"CPU usage [jiffies]"',
                              'logarithmic': False, 'hrule': True},
          'LOAD': {'vertical_label': '"System load"'},
          'DISK': {'logarithmic': False,
-                  'vertical_label': '"Disk traffic [bytes/sec]"'}
-    }
+                  'vertical_label': '"Disk traffic [bytes/sec]"'}}
 
 # RRD cdef
 CDEF = ('MIN', 'AVERAGE', 'MAX')
@@ -97,31 +94,31 @@ FILES = {
         # FileInfo('cpu-idle.rrd', 'idle', 'value'),
         # FileInfo('cpu-interrupt.rrd', 'interrupt', 'value'),
         # FileInfo('cpu-nice.rrd', 'nice', 'value'),
-        ],
+    ],
     'MEMORY': [
         FileInfo('memory-used.rrd', 'used', 'value'),
         FileInfo('memory-buffered.rrd', 'buffered', 'value'),
         FileInfo('memory-cached.rrd', 'cached', 'value'),
         FileInfo('memory-free.rrd', 'free', 'value'),
-        ],
+    ],
     'INTERFACE': [
         FileInfo('if_octets.rrd', 'incoming', 'rx'),
         FileInfo('if_octets.rrd', 'outgoing', 'tx')
-        ],
+    ],
     'INTERFACE_BYTES': [
         FileInfo('if_octets.rrd', 'incoming', 'rx'),
         FileInfo('if_octets.rrd', 'outgoing', 'tx')
-        ],
+    ],
     'LOAD': [
         FileInfo('load.rrd', 'short', 'shortterm'),
         FileInfo('load.rrd', 'mid', 'midterm'),
         FileInfo('load.rrd', 'long', 'longterm')
-        ],
+    ],
     'DISK': [
         FileInfo('disk_octets.rrd', 'read', 'read'),
         FileInfo('disk_octets.rrd', 'write', 'write')
-        ]
-    }
+    ]
+}
 
 # Graphs calculations
 CALCULATIONS = {
@@ -130,7 +127,7 @@ CALCULATIONS = {
                     [(FILES['CPU'][0].vname, CDEF[1]),
                      (FILES['CPU'][1].vname, CDEF[1])],
                     '{0},{1},+')
-        ],
+    ],
     'MEMORY': [
         Calculation('user_buffered',
                     [(FILES['MEMORY'][0].vname, CDEF[2]),
@@ -147,7 +144,7 @@ CALCULATIONS = {
                      (FILES['MEMORY'][2].vname, CDEF[2]),
                      (FILES['MEMORY'][3].vname, CDEF[2])],
                     '{0},{1},+,{2},+,{3},+'),
-        ],
+    ],
     # For bits/sec representation
     'INTERFACE': [
         Calculation('rx_min_bits',
@@ -171,16 +168,16 @@ CALCULATIONS = {
         Calculation('tx_max_bits_neg',
                     [(FILES['INTERFACE'][1].vname, CDEF[1])],
                     '-8,{0},*')
-        ],
+    ],
     # For bytes/sec representation
     'INTERFACE_BYTES': [
         Calculation('tx_max_bytes_neg',
                     [(FILES['INTERFACE_BYTES'][1].vname, CDEF[1])],
                     '-1,{0},*')
-        ],
+    ],
     'LOAD': [],
     'DISK': []
-    }
+}
 
 # Graph's lines and areas
 DISPLAY = {
@@ -188,33 +185,33 @@ DISPLAY = {
         LineDef(CALCULATIONS['CPU'][0].vname, None, True, True, 'User\:'),
         LineDef(FILES['CPU'][1].vname, CDEF[1], True, True, 'System\:'),
         LineDef(FILES['CPU'][2].vname, CDEF[1], True, True, 'Wait-IO\:')
-        ],
+    ],
     'MEMORY': [
         LineDef(CALCULATIONS['MEMORY'][2].vname, None, True, True, 'Free\:',),
         LineDef(CALCULATIONS['MEMORY'][1].vname, None, True, True, 'Page cache\:'),
         LineDef(CALCULATIONS['MEMORY'][0].vname, None, True, True, 'Buffer cache\:'),
         LineDef(FILES['MEMORY'][0].vname, CDEF[2], True, True, 'Used\:'),
-        ],
+    ],
     # For bits/sec representation
     'INTERFACE': [
-        LineDef(CALCULATIONS['INTERFACE'][2].vname, None, True, True, 'Incoming:',),
+        LineDef(CALCULATIONS['INTERFACE'][2].vname, None, True, True, 'Incoming\:',),
         LineDef(CALCULATIONS['INTERFACE'][6].vname, None, True, True, 'Outgoing\:')
-        ],
+    ],
     # For bytes/sec representation
     'INTERFACE_BYTES': [
-        LineDef(FILES['INTERFACE_BYTES'][0].vname, CDEF[2], True, True, 'Incoming:',),
+        LineDef(FILES['INTERFACE_BYTES'][0].vname, CDEF[2], True, True, 'Incoming\:',),
         LineDef(CALCULATIONS['INTERFACE_BYTES'][0].vname, None, True, True, 'Outgoing\:')
-        ],
+    ],
     'LOAD': [
         LineDef(FILES['LOAD'][0].vname, CDEF[1], True, False, '1 minute average\:'),
         LineDef(FILES['LOAD'][1].vname, CDEF[1], True, False, '5 minute average\:'),
         LineDef(FILES['LOAD'][2].vname, CDEF[1], True, False, '15 minute average\:')
-        ],
+    ],
     'DISK': [
         LineDef(FILES['DISK'][0].vname, CDEF[2], True, False, 'Read\:'),
         LineDef(FILES['DISK'][1].vname, CDEF[2], True, False, 'Written\:'),
-        ]
-    }
+    ]
+}
 
 
 VARS = [
@@ -222,7 +219,7 @@ VARS = [
     Variable('AVERAGE', 'Avg,'),
     Variable('MAXIMUM', 'Max,'),
     Variable('LAST', 'Last\l')
-    ]
+]
 
 
 # Graph's prints
@@ -240,7 +237,7 @@ PRINTS = {
                (FILES['CPU'][2].vname, CDEF[1], VARS[1]),
                (FILES['CPU'][2].vname, CDEF[2], VARS[2]),
                (FILES['CPU'][2].vname, CDEF[1], VARS[3])], '%8.1lf {}')
-        ],
+    ],
     'MEMORY': [
         Print([(FILES['MEMORY'][3].vname, CDEF[0], VARS[0]),
                (FILES['MEMORY'][3].vname, CDEF[1], VARS[1]),
@@ -258,7 +255,7 @@ PRINTS = {
                (FILES['MEMORY'][0].vname, CDEF[1], VARS[1]),
                (FILES['MEMORY'][0].vname, CDEF[2], VARS[2]),
                (FILES['MEMORY'][0].vname, CDEF[1], VARS[3])], '%8.1lf%S {}')
-        ],
+    ],
     # For bits/sec representation
     'INTERFACE': [
         Print([(CALCULATIONS['INTERFACE'][0].vname, None, VARS[0]),
@@ -269,7 +266,7 @@ PRINTS = {
                (CALCULATIONS['INTERFACE'][4].vname, None, VARS[1]),
                (CALCULATIONS['INTERFACE'][5].vname, None, VARS[2]),
                (CALCULATIONS['INTERFACE'][4].vname, None, VARS[3])], '%8.1lf%S {}')
-        ],
+    ],
     # For bytes/sec representation
     'INTERFACE_BYTES': [
         Print([(FILES['INTERFACE_BYTES'][0].vname, CDEF[0], VARS[0]),
@@ -280,7 +277,7 @@ PRINTS = {
                (FILES['INTERFACE_BYTES'][1].vname, CDEF[1], VARS[1]),
                (FILES['INTERFACE_BYTES'][1].vname, CDEF[2], VARS[2]),
                (FILES['INTERFACE_BYTES'][1].vname, CDEF[1], VARS[3])], '%8.1lf%S {}')
-        ],
+    ],
     'LOAD': [
         Print([(FILES['LOAD'][0].vname, CDEF[0], VARS[0]),
                (FILES['LOAD'][0].vname, CDEF[1], VARS[1]),
@@ -294,7 +291,7 @@ PRINTS = {
                (FILES['LOAD'][2].vname, CDEF[1], VARS[1]),
                (FILES['LOAD'][2].vname, CDEF[2], VARS[2]),
                (FILES['LOAD'][2].vname, CDEF[1], VARS[3])], '%8.1lf {}'),
-        ],
+    ],
     'DISK': [
         Print([(FILES['DISK'][0].vname, CDEF[0], VARS[0]),
                (FILES['DISK'][0].vname, CDEF[1], VARS[1]),
@@ -304,8 +301,8 @@ PRINTS = {
                (FILES['DISK'][1].vname, CDEF[1], VARS[1]),
                (FILES['DISK'][1].vname, CDEF[2], VARS[2]),
                (FILES['DISK'][1].vname, CDEF[1], VARS[3])], '%8.1lf%S {}')
-        ]
-    }
+    ]
+}
 
 
 # Graph's xgrid info depending on time period
@@ -317,7 +314,7 @@ XGRID = [
     XGrid(3601, 18000, 'MINUTE:10:HOUR:1:MINUTE:30:0:%R'),
     XGrid(18001, 172800, 'MINUTE:30:HOUR:2:MINUTE:120:0:%R'),
     XGrid(172801, None, 'HOUR:2:HOUR:8:HOUR:8:0:%R')
-    ]
+]
 
 
 class GraphHrule(object):
@@ -448,8 +445,7 @@ def get_graph_command(plugin_dir, start, end, gtype='CPU', destination='/tmp/rrd
                 var_def_obj = graph_datadefs[_data_def][_cdef].vname
             else:
                 var_def_obj = graph_calculations[_data_def].vname
-            var_def = VariableDefinition(var_name,
-                rpn="{0},{1}".format(var_def_obj, _var.name))
+            var_def = VariableDefinition(var_name, rpn="{0},{1}".format(var_def_obj, _var.name))
             graph_vars.append(var_def)
             graph_prints.append(GraphPrint(var_def, prints.fstring.format(_var.label)))
 
