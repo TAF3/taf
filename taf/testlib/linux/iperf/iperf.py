@@ -20,14 +20,18 @@
 
 import os
 import sys
-from collections import namedtuple
+import operator
+
+from collections import namedtuple, OrderedDict
+from contextlib import suppress
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../')))
-from utils.iperflexer import sumparser  # pylint: disable=no-name-in-module
-from utils.iperflexer import iperfexpressions  # pylint: disable=no-name-in-module
-from utils.iperflexer.main import UNITS  # pylint: disable=no-name-in-module
-from testlib.linux import tool_general
-from testlib.linux.iperf import iperf_cmd
+
+from utils.iperflexer import sumparser  # noqa ignore: E402  # pylint: disable=no-name-in-module
+from utils.iperflexer import iperfexpressions  # noqa ignore: E402  # pylint: disable=no-name-in-module
+from utils.iperflexer.main import UNITS  # noqa ingore: E402  pylint: disable=no-name-in-module
+from testlib.linux import tool_general  # noqa ingore: E402  pylint: disable=no-name-in-module
+from testlib.linux.iperf import iperf_cmd  # noqa ingore: E402  pylint: disable=no-name-in-module
 
 Line = namedtuple('Line', 'interval, transfer, t_units, bandwidth, b_units')
 
@@ -82,6 +86,106 @@ class IPerfParser(sumparser.SumParser):
         return results
 
 
+class IperfStats(object):
+    """
+    Iperf output statistics from a single run (process)
+    """
+    DEFAULT_UNITS = 'mbytes'
+    DEFAULT_THREADS = 1
+
+    LAST_LINE_GETTER = operator.itemgetter(-1)
+
+    def __init__(self, command=None, iface=None, data_raw=None, data_parsed=None, parser=None):
+        super(IperfStats, self).__init__()
+
+        self.command = command
+        self.iface = iface
+
+        if not parser:
+            parser = self.parser_from_command(command)
+        self.parser = parser
+
+        if not data_parsed and data_raw:
+            data_parsed = self.parsed_from_raw(data_raw)
+        self.output_raw = data_raw
+        self.output_parsed = data_parsed
+
+    @property
+    def last_line(self):
+        with suppress(AttributeError):
+            return self._last_line
+
+        with suppress(IndexError):
+            self._last_line = self.LAST_LINE_GETTER(self.output_parsed)
+            return self._last_line
+
+        self._last_line = None
+        return self._last_line
+
+    @classmethod
+    def parser_from_command(cls, command):
+        return IPerfParser(units=command.get('format', cls.DEFAULT_UNITS),
+                           threads=command.get('parallel', cls.DEFAULT_THREADS))
+
+    def parsed_from_raw(self, data_raw, parser=None):
+        if not parser:
+            parser = self.parser
+        return self.parser.parse(data_raw)
+
+    def parse(self, output, raw=None):
+        if raw:
+            self.output_raw = raw
+            self.output_parsed = output
+        else:
+            self.output_raw = output
+            self.output_parsed = self.parser.parse(output)
+
+    def __str__(self):
+        return self.retval()
+
+    @classmethod
+    def dict_to_str(cls, a_dict,
+                    dict_items_formatter="\"{0[0]}\"=\"{0[1]}\"".format,
+                    dict_items_joint=", ".join,
+                    dict_items_iterator=dict.items):
+        return str(dict_items_joint(map(dict_items_formatter,
+                                        dict_items_iterator(a_dict))))
+
+    @property
+    def retval(self):
+        last_line = self.last_line
+
+        retval = {
+            "comment": self.dict_to_str(
+                dict(
+                    command=str(" ".join(map(str, self.command.to_args_list()))),
+                    interface=str(self.iface),
+                    interval=str("-".join(map(str, last_line.interval[0:1]))),
+                    time=str(last_line.interval[1]),
+                )
+            ),
+            "metrics": OrderedDict((
+                (
+                    "bandwidth",
+                    {
+                        # "name": "bandwidth",
+                        "value": last_line.bandwidth,
+                        "units": last_line.b_units,
+                    }
+                ),
+                (
+                    "transfer",
+                    {
+                        # "name": "transfer",
+                        "value": last_line.transfer,
+                        "units": last_line.t_units,
+                    }
+                )
+            ))
+        }
+        return retval
+
+
 class Iperf(tool_general.GenericTool):
     """Class for Iperf functionality.
 
@@ -110,14 +214,7 @@ class Iperf(tool_general.GenericTool):
         """
         # intermediate operands in 'command' and 'options', if any,  prevail in this
         # respective order and overrule the (both default and set) method arguments
-        cmd = iperf_cmd.CmdIperf(**kwargs)
-        if options:
-            _opts_cmd = iperf_cmd.CmdIperf(options)
-            cmd.update(_opts_cmd)
-
-        if command:
-            cmd.update(command)
-
+        cmd = iperf_cmd.CmdIperf(kwargs, options, command)
         cmd.check_args()
         args_list = cmd.to_args_list()
 

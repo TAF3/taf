@@ -24,9 +24,18 @@ from collections import OrderedDict
 from argparse import ArgumentParser
 
 from testlib.linux.commands.cmd_helper import Command, CommandHelper, ArgumentBuilder
-from testlib.custom_exceptions import UnknownArguments, ArgumentsCollision
+from testlib.linux.commands import cmd_exceptions as cmd_ex
 
 chain_it = itertools.chain.from_iterable
+
+
+_DEFAULT_FORMAT = 'm'
+_DEFAULT_INTERVAL = 10
+_DEFAULT_LEN = '8k'
+_DEFAULT_PORT = 5001
+_DEFAULT_MSS = 40
+
+_DEFAULT_TIME = 10
 
 
 IPERF_GENERAL_OPTS = {
@@ -34,6 +43,8 @@ IPERF_GENERAL_OPTS = {
         'names': {'short': '-f', 'long': '--format'},
         'help': '[kmKM]   format to report: Kbits, Mbits, KBytes, MBytes',
         'choices': 'kmKM',
+        'default': _DEFAULT_FORMAT,
+        'set_traits': 'always',
     },
     'help': {
         'names': {'short': '-h', 'long': '--help'},
@@ -43,13 +54,14 @@ IPERF_GENERAL_OPTS = {
     'interval': {
         'names': {'short': '-i', 'long': '--interval'},
         'help': 'pause N seconds between periodic bandwidth reports',
-        # 'default': 10,
+        'default': _DEFAULT_INTERVAL,
+        'set_traits': 'always',
         'type': int,
     },
     'len': {
         'names': {'short': '-l', 'long': '--len'},
         'help': '\\d+[KM] set length read/write buffer to N (default 8 KB)',
-        'default': '8K',
+        'default': _DEFAULT_LEN,
     },
     'print_mss': {
         'names': {'short': '-m', 'long': '--print_mss'},
@@ -63,7 +75,7 @@ IPERF_GENERAL_OPTS = {
     'port': {
         'names': {'short': '-p', 'long': '--port'},
         'help': 'set server port to listen on/connect to N (default 5001)',
-        'default': '5001',
+        'default': _DEFAULT_PORT,
         'type': int,
     },
     'udp': {
@@ -87,7 +99,7 @@ IPERF_GENERAL_OPTS = {
     'mss': {
         'names': {'short': '-M', 'long': '--mss'},
         'help': '\\d+ set TCP maximum segment size (MTU - 40 bytes)',
-        'default': 40,
+        'default': _DEFAULT_MSS,
         'type': int,
     },
     'nodelay': {
@@ -160,6 +172,7 @@ IPERF_CLIENT_OPTS = {
     'time': {
         'names': {'short': '-t', 'long': '--time'},
         'help': 'time in seconds to transmit for (default 10 secs)',
+        'default': _DEFAULT_TIME,
         'type': int,
     },
     'fileinput': {
@@ -193,17 +206,23 @@ IPERF_CLIENT_OPTS = {
 }
 
 # specify the order of the output arguments when buildinig up a command
-_IPERF_ARGS_ORDERED = OrderedDict.fromkeys(
-    itertools.chain(['server', 'client'],
-                    sorted(IPERF_SERVER_OPTS),
-                    sorted(IPERF_CLIENT_OPTS),
-                    sorted(IPERF_GENERAL_OPTS)))
+_IPERF_ARGS_ORDERED = OrderedDict(
+    itertools.chain(
+        [
+            ('server', IPERF_SERVER_OPTS['server']),
+            ('client', IPERF_CLIENT_OPTS['client'])
+        ],
+        sorted(IPERF_SERVER_OPTS.items()),
+        sorted(IPERF_CLIENT_OPTS.items()),
+        sorted(IPERF_GENERAL_OPTS.items())
+    )
+)
 
 
 class IperfArgumentBuilder(ArgumentBuilder):
     """
     """
-    ARGS_ORDERED = list(_IPERF_ARGS_ORDERED.keys())
+    ARGS_ORDERED = _IPERF_ARGS_ORDERED
 
     @classmethod
     def get_formatter(cls):
@@ -243,49 +262,73 @@ class CmdIperfHelper(CommandHelper):
     @classmethod
     def _check_args(cls, **__kwargs):
         kwargs = cls._decode_args(**__kwargs)
-        is_server = kwargs.get('server', None)
-        is_client = kwargs.get('client', None)
-        if (is_server and is_client) or (not is_server and not is_client):
-            raise ArgumentsCollision(server=is_server, client=is_client)
+        __server = kwargs.get('server')
+        __client = kwargs.get('client')
+        both = __server and __client
+        neither = not __server and not __client
 
-        if is_server:
-            return cls._check_server_args(**__kwargs)
+        # if neither:
+        #     raise ArgumentsNotSet('server', 'client')
 
-        return cls._check_client_args(**__kwargs)
+        if both or neither:
+            raise cmd_ex.ArgumentsCollision(server=__server, client=__client)
+
+        try:
+            if __server:
+                __kwargs = cls._check_server_args(**__kwargs)
+            else:
+                __kwargs = cls._check_client_args(**__kwargs)
+
+            __kwargs = cls._check_general_args(**__kwargs)
+            if __kwargs:
+                raise cmd_ex.UnknownArguments(cls._decode_args(**__kwargs))
+
+        except cmd_ex.ArgumentsNotSet:
+            raise
 
     # TODO maybe put these outside the class to avoid name mangling?
     @classmethod
-    def _check_server_args(cls, __server=False, __single_udp=None, __daemon=None, **__kwargs):
-        assert __server
-        return cls._check_general_args(**__kwargs)
+    def _check_server_args(
+            cls,
+            __server=False, __single_udp=None, __daemon=None,
+            **__kwargs):
+
+        if not __server:
+            raise cmd_ex.ArgumentsNotSet('server')
+
+        return __kwargs
 
     @classmethod
-    def _check_client_args(cls, __client=None, __bandwidth=None, __dualtest=None, __num=None,
-                           __stdin=None, __tradeoff=None, __time=None, __fileinput=None,
-                           __listenport=None, __parallel=None, __ttl=None, __linux_congestion=None,
-                           **__kwargs):
-        assert __client
-        return cls._check_general_args(**__kwargs)
+    def _check_client_args(
+            cls,
+            __client=None, __bandwidth=None, __dualtest=None, __num=None, __stdin=None,
+            __tradeoff=None, __time=None, __fileinput=None, __listenport=None, __parallel=None,
+            __ttl=None, __linux_congestion=None,
+            **__kwargs):
+
+        if not __client:
+            raise cmd_ex.ArgumentsNotSet('client')
+
+        return __kwargs
 
     @classmethod
-    def _check_general_args(cls, __format='m', __help=False, __interval=10, __len='8K',
-                            __print_mss=False, __output=None, __port=5001, __udp=False,
-                            __window=None, __bind=None, __compatibility=False, __mss=40,
-                            __nodelay=False, __version=False, __IPv6Version=False,
-                            __reportexclude=None, __reportstyle=None, **__kwargs):
-        if __kwargs:
-            raise UnknownArguments(**cls._decode_args(**__kwargs))
+    def _check_general_args(
+            cls,
+            __format=None, __help=False, __interval=None, __len=None, __print_mss=False,
+            __output=None, __port=None, __udp=False, __window=None, __bind=None,
+            __compatibility=False, __mss=None, __nodelay=False, __version=False,
+            __IPv6Version=False, __reportexclude=None, __reportstyle=None,
+            **__kwargs):
 
-        return True
+        return __kwargs
 
 
 IPERF_PARSER = ArgumentParser(prog='iperf', conflict_handler='resolve')
 IPERF_BUILDER = IperfArgumentBuilder()
 
-_params_dict = dict(dict(IPERF_GENERAL_OPTS, **IPERF_SERVER_OPTS), **IPERF_CLIENT_OPTS)
 iperf_cmd_kwargs = {
     'arg_parser': IPERF_PARSER,
-    'params': _params_dict,
+    'params': _IPERF_ARGS_ORDERED,
     'arg_builder': IPERF_BUILDER,
     'default_list': [],
 }

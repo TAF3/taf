@@ -24,7 +24,7 @@ from collections import OrderedDict
 from argparse import ArgumentParser
 
 from testlib.linux.commands.cmd_helper import Command, CommandHelper, ArgumentBuilder
-from testlib.custom_exceptions import UnknownArguments
+from testlib.linux.commands import cmd_exceptions as cmd_ex
 
 
 SURICATA_OPTS = {
@@ -279,7 +279,7 @@ class CmdSuricataHelper(CommandHelper):
         __kwargs = cls.check_opt_keywords(**__kwargs)
 
         if __kwargs:
-            raise UnknownArguments(**cls._decode_args(**__kwargs))
+            raise cmd_ex.UnknownArguments(**cls._decode_args(**__kwargs))
 
         return True
 

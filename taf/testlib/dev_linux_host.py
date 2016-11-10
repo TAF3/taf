@@ -24,7 +24,10 @@ import sys
 import time
 import traceback
 import operator
+import functools
+
 from itertools import chain, zip_longest
+from contextlib import suppress
 
 import pytest
 
@@ -33,7 +36,9 @@ from . import clinns
 from . import entry_template
 from . import linux_host_bash
 from . import loggers
+
 from .custom_exceptions import ArgumentError
+from .common import logic
 
 
 UI_MAP = {
@@ -41,24 +46,46 @@ UI_MAP = {
 }
 
 
-class NICHelper(object):
-    @staticmethod
-    def NICS_IF_NO_LO(nic):
-        return 'lo' != nic['name']
+__0__ = object()
 
-    @staticmethod
-    def NICS_IF_NO_MGMT(nic):
-        """TODO
 
-        """
-        pass
+class NICHelper(logic.Predicate):
+    """
+    """
+    NIC_GET_NAME = operator.itemgetter('name')
+    NIC_GET_IPS = operator.itemgetter('ip_addr')
 
-    @staticmethod
-    def NIC_OBJ(nic):
-        return nic
+    @classmethod
+    def pgen_nic_name_eq(cls, name):
+        def pred(nic):
+            return nic['name'] == name
+        return pred
 
-    NIC_NAME = operator.itemgetter('name')
-    NIC_IP_ADDR = operator.itemgetter('ip_addr')
+    @classmethod
+    def pgen_nic_ips_eq(cls, ips):
+        def pred(nic):
+            return nic['ip_addr'] == ips
+        return pred
+
+    @classmethod
+    def NIC_IF_NAME_EQ(cls, name, _impl=bool):
+        pred = cls.pgen_nic_name_eq(name)
+        return cls.__PWRAP_IMPL_MAP__[_impl][True](pred)
+
+    @classmethod
+    def NIC_IF_NAME_NEQ(cls, name, _impl=bool):
+        pred = cls.pgen_nic_name_eq(name)
+        return cls.__PWRAP_IMPL_MAP__[_impl][False](pred)
+
+    @classmethod
+    def NIC_IF_IPS_EQ(cls, ips, _impl=bool):
+        pred = cls.pgen_nic_ips_eq(ips)
+        return cls.__PWRAP_IMPL_MAP__[_impl][True](pred)
+
+    @classmethod
+    def NIC_IF_IPS_NEQ(cls, ips, _impl=bool):
+        pred = cls.PRED_GEN_nic_ips_eq(ips)
+        return cls.__PWRAP_IMPL_MAP__[_impl][False](pred)
 
 
 def autologin(function):
@@ -715,50 +742,60 @@ class GenericLinuxHost(entry_template.GenericEntry):
         else:
             raise Exception("Incorrect mode={0}".format(mode))
 
-    def _get_nics(self, force_check=False):
+    @functools.wraps(NICHelper.NIC_IF_NAME_EQ)
+    def NIC_IF_LO(self):
+        return NICHelper.NIC_IF_NAME_EQ('lo')
+
+    @functools.wraps(NICHelper.NIC_IF_NAME_NEQ)
+    def NIC_IF_NO_LO(self):
+        return NICHelper.NIC_IF_NAME_NEQ('lo')
+
+    __NIC_FILTERS_MAP__ = {}
+
+    @property
+    def default_nic_filters(self):
+        return self.__NIC_FILTERS_MAP__
+
+    def _get_nics(self, redo=False):
         """Returns list of detected network adapterrs in the system
 
-        Notes:
-            Order of the adapters is very important. It should be according to how the
-            networks are defined when VM is created. Proper order is in self.os_networks
-
-        Args:
-            force_check(bool): force re-reading nics
-
-        Returns:
-            list: list of nics
-
+        @param redo: force re-reading nics
+        @type redo: bool
+        @return: list of nics
+        @rtype: list
         """
-        if self.nics is None or force_check:
-            detected_nics = self.ui.get_table_ports(ip_addr=True)
-            # filter out interfaces with no IP
-            self.nics = [nic for nic in detected_nics if nic['ip_addr']]
+        if self.nics is None or redo:
+            self.nics = self.ui.get_table_ports(ip_addr=True)
         return self.nics
 
-    def get_nics_if(self, f, force_check=False):
-        if f:
-            return list(filter(f, self._get_nics(force_check)))
-        return self._get_nics()
+    def get_nics_if(self, filters, redo=False):
+        return [nic for nic in self._get_nics(redo=redo) if all(f(nic) for f in filters)]
 
-    def map_nics_if(self, f, mapper=NICHelper.NIC_OBJ, force_check=False):
-        nics = self.get_nics_if(f, force_check)
+    def map_nics_if(self, filters, mapper=None, redo=False):
+        nics = self.get_nics_if(filters, redo=redo)
         if mapper:
             return list(map(mapper, nics))
         return nics
 
-    def get_nics(self, no_lo=True, mapper=None, force_check=False):
-        f = NICHelper.NICS_IF_NO_LO if no_lo else None
-        return self.map_nics_if(f=f, mapper=mapper, force_check=force_check)
+    def _map_default_nic_filters(self, f):
+        with suppress(KeyError):
+            f = self.__NIC_FILTERS_MAP__[f](self)
+        return f
 
-    def get_nics_names(self, no_lo=True, force_check=False):
-        f = NICHelper.NICS_IF_NO_LO if no_lo else None
-        mapper = NICHelper.NIC_NAME
-        return self.map_nics_if(f=f, mapper=mapper, force_check=force_check)
+    def get_nics(self, filters=__0__, mapper=None, redo=False):
+        if filters is __0__:
+            filters = self.default_nic_filters
 
-    def get_nics_ips(self, no_lo=True, force_check=False):
-        f = NICHelper.NICS_IF_NO_LO if no_lo else None
-        mapper = NICHelper.NIC_IP_ADDR
-        return self.map_nics_if(f=f, mapper=mapper, force_check=force_check)
+        if filters:
+            filters = list(map(self._map_default_nic_filters, filters))
+
+        return self.map_nics_if(filters, mapper=mapper, redo=redo)
+
+    def get_nics_names(self, filters=__0__, redo=False):
+        return self.get_nics(filters=filters, mapper=NICHelper.NIC_GET_NAME, redo=redo)
+
+    def get_nics_ips(self, filters=__0__, redo=False):
+        return self.get_nics(filters=filters, mapper=NICHelper.NIC_GET_IPS, redo=redo)
 
     def get(self, init_start=False, retry_count=1):
         """Get or start linux host instance.
@@ -1073,6 +1110,11 @@ class GenericLinuxHost(entry_template.GenericEntry):
                 pytest.fail(message)
             else:
                 self.class_logger.debug("Ports speed configuration - OK")
+
+
+GenericLinuxHost.__NIC_FILTERS_MAP__ = {
+    'no_lo': GenericLinuxHost.NIC_IF_NO_LO
+}
 
 
 class IpNetworkNamespace(GenericLinuxHost):

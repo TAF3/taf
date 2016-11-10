@@ -79,11 +79,11 @@ class AST_Node_Pred(object):
     """
     @classmethod
     def NP_IS_TERMINAL(cls, node):
-        return isinstance(node, AST_T_Node)
+        return node and isinstance(node, AST_T_Node)
 
     @classmethod
     def NP_IS_NONTERMINAL(cls, node):
-        return isinstance(node, AST_N_Node)
+        return node and isinstance(node, AST_N_Node)
 
     @classmethod
     def NP_GEN_DATA(cls, data_predicate):
@@ -466,7 +466,7 @@ class LL_Parser(object):
         return first_set
 
 
-class Semantic(object):
+class Semantics(object):
     pass
 
 

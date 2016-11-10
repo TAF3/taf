@@ -20,11 +20,13 @@
 
 import copy
 import operator
+import itertools
 import argparse
 
+from contextlib import suppress
 from collections import Mapping, OrderedDict
 
-from testlib.custom_exceptions import CmdArgsException, UnknownArguments
+from testlib.linux.commands import cmd_exceptions as cmd_ex
 
 
 class ArgumentBuilder(object):
@@ -36,16 +38,19 @@ class ArgumentBuilder(object):
         self.args_order = args_order
         self.args_formatter = args_formatter
 
+    GET_FIRST = operator.itemgetter(0)
+    GET_LAST = operator.itemgetter(-1)
+
     # SECTION optional args' key formatter
     @classmethod
     def FORMAT_KEY_FIRST(cls, params, arg_name=None, **kwargs):
         keys = list(params[arg_name]['names'].values())
-        return operator.itemgetter(0)(keys)
+        return cls.GET_FIRST(keys)
 
     @classmethod
     def FORMAT_KEY_LAST(cls, params, arg_name=None, **kwargs):
         keys = list(params[arg_name]['names'].values())
-        return operator.itemgetter(-1)(keys)
+        return cls.GET_LAST(keys)
 
     @classmethod
     def FORMAT_KEY_LONGEST(cls, params, arg_name=None, **kwargs):
@@ -88,18 +93,18 @@ class ArgumentBuilder(object):
     @classmethod
     def FORMATTER_JOIN_KEY_VAL(cls, key=None, val=None, joiner=None):
         def wrapper(params, arg_name=None, arg_val=None, **kwargs):
-            _key_out = _val_out = _out = None
             arg_kwargs = {
                 'arg_name': arg_name,
                 'arg_val': arg_val,
             }
+            out = None
             if key:
-                _key_out = key(params, **arg_kwargs)
+                arg_kwargs['key_fmtd'] = key(params, **arg_kwargs)
             if val:
-                _val_out = val(params, **arg_kwargs)
+                arg_kwargs['val_fmtd'] = val(params, **arg_kwargs)
             if joiner:
-                _out = joiner(params, **dict(arg_kwargs, key_fmtd=_key_out, val_fmtd=_val_out))
-            return _out
+                out = joiner(params, **arg_kwargs)
+            return out
         return wrapper
 
     # a little hack to allow for booleans to simulate unique objects behavior.
@@ -138,34 +143,47 @@ class ArgumentBuilder(object):
                 formatter = self.__DEFAULT_FORMATTER
 
         args_list = []
+        unknown_kwargs = {}
         for arg_name in order:
-            if arg_name in args:
+            try:
                 arg_val = args[arg_name]
+            except KeyError:
+                continue
 
-                if arg_name in opts_map:
-                    assert 'names' in opts_map[arg_name]
-                    _fmt = formatter['optional']
-                    _fmt_args = [opts_map]
+            opts_arg = opts_map.get(arg_name)
+            pos_arg = pos_map.get(arg_name)
+            both = opts_arg and pos_arg
+            neither = not opts_arg and not pos_arg
+            if both:
+                # ???
+                raise ValueError(arg_name)
+            if neither:
+                unknown_kwargs[arg_name] = arg_val
 
-                elif arg_name in pos_map:
-                    assert 'pos' in pos_map[arg_name]
-                    _fmt = formatter['positional']
-                    _fmt_args = [pos_map]
+            if unknown_kwargs:
+                continue
 
+            if opts_arg:
+                assert 'names' in opts_arg
+                fmt = formatter['optional']
+                args_map = opts_map
+
+            else:  # if pos_arg
+                assert 'pos' in pos_arg
+                fmt = formatter['positional']
+                args_map = pos_map
+
+            out = fmt(args_map, arg_name=arg_name, arg_val=arg_val)
+            if out:
+                if isinstance(out, list):
+                    args_list.extend(out)
+                elif isinstance(out, str):
+                    args_list.append(out)
                 else:
-                    raise Exception('Unknown argument: %s=%s', arg_name, arg_val)
+                    raise TypeError(out)
 
-                _fmt_kwargs = {
-                    'arg_name': arg_name,
-                    'arg_val': arg_val,
-                }
-                _out = _fmt(*_fmt_args, **_fmt_kwargs)
-                if _out:
-                    if isinstance(_out, list):
-                        args_list.extend(_out)
-                    elif isinstance(_out, str):
-                        args_list.append(_out)
-
+            # cmd_ex.UnknownArguments(unknown_kwargs).raise_on_true()
+            cmd_ex.UnknownArguments.raise_on_true(unknown_kwargs)
         return args_list
 
     @classmethod
@@ -201,7 +219,20 @@ ArgumentBuilder.__DEFAULT_FORMATTER = ArgumentBuilder.get_formatter()  # pylint:
 class CommandHelper(object):
     """
     """
-    MANGLED_CLS_PREFIX = None
+    MANGLED_CLS_PREFIX = ''
+    ARG_PREFIX = '__'
+    ARG_SUFFIX = ''
+    FORMATTER = ''
+
+    ST_ALWAYS = 'always'
+    ST_NEVER = 'never'
+    ST_VALUE_NONDEFAULT = 'value_nondefault'
+    SET_TRAITS = {
+        ST_ALWAYS,
+        ST_NEVER,
+        ST_VALUE_NONDEFAULT,
+    }
+    DEFAULT_SET_TRAITS = ST_VALUE_NONDEFAULT
 
     @classmethod
     def _get_cls_prefix(cls):
@@ -210,8 +241,16 @@ class CommandHelper(object):
         return cls.MANGLED_CLS_PREFIX
 
     @classmethod
+    def _get_formatter(cls):
+        if not cls.FORMATTER:
+            cls.FORMATTER = '{0}{1}{{}}{2}'.format(cls._get_cls_prefix(),
+                                                   cls.ARG_PREFIX,
+                                                   cls.ARG_SUFFIX)
+        return cls.FORMATTER
+
+    @classmethod
     def _encode_args(cls, **kwargs):
-        return {'{}__{}'.format(cls._get_cls_prefix(), k): v for k, v in kwargs.items()}
+        return {cls._get_formatter().format(k): v for k, v in kwargs.items()}
 
     @classmethod
     def _decode_args(cls, **__kwargs):
@@ -236,6 +275,8 @@ class CommandHelper(object):
         self.optarg_list = []
         self.optarg_map = {}
         self.default_image = None
+        self.args_blacklist = set()
+        self.args_whitelist = set()
 
         if not conflict_handler:
             conflict_handler = 'resolve'
@@ -253,13 +294,22 @@ class CommandHelper(object):
     def _init_params(self, params, default_list=None):
         self.params = params
         for param_name, param_desc in params.items():
-            _par = copy.deepcopy(param_desc)
+            _par = copy.copy(param_desc)
+
+            set_traits = _par.pop('set_traits', self.DEFAULT_SET_TRAITS)
+            assert set_traits in self.SET_TRAITS
+            if set_traits is self.ST_NEVER:
+                self.args_blacklist.add(param_name)
+            elif set_traits is self.ST_ALWAYS:
+                self.args_whitelist.add(param_name)
+
             if 'names' in param_desc:  # optional arg
                 self.optarg_map[param_name] = _par
                 names = _par.pop('names')
                 self.arg_parser.add_argument(*list(names.values()), dest=param_name, **_par)
                 _par['names'] = names
                 _par['pos'] = len(self.optarg_list)
+                self.optarg_list.append(param_name)
             else:  # positional arg
                 self.posarg_map[param_name] = _par
                 self.arg_parser.add_argument(param_name)
@@ -274,14 +324,52 @@ class CommandHelper(object):
     def parse_args(self, args_list):
         return self.arg_parser.parse_args(args_list)
 
-    def get_set_args(self, args_in, args_out=None, args_order=None):
-        """A command builder helper function.
+    def _get_reverse_dest_action_map(self):
+        with suppress(AttributeError):
+            return self.dest2action_map
 
-        Strips the dict off the unset (default) arguments.
-        Learns which fields in 'args_in' (dict or argparse.Namespace instance), possibly
-        parsed earlier, had been set before the parsing took place.
-        If an intermediate dict is provided in 'args_out', mutate in place and overwrite it on collision.
+        self.dest2action_map = {action.dest: action for action in self.arg_parser._actions}
+        return self.dest2action_map
 
+    def _check_arg_value(self, arg_name, arg_val, noraise=False):
+        actions_map = self._get_reverse_dest_action_map()
+        try:
+            arg_action = actions_map[arg_name]
+        except KeyError:
+            raise cmd_ex.UnknownArguments(arg_name=arg_val)
+
+        try:
+            # the following 2 methods may violate `argparse` "encapsulation"
+            value = self.arg_parser._get_value(arg_action, arg_val)
+            self.arg_parser._check_value(arg_action, value)
+        except argparse.ArgumentError:
+            if noraise:
+                return False
+            else:
+                raise cmd_ex.InvalidArguments(arg_name=arg_val)
+        return True
+
+    def check_values(self, **kwargs):
+        unknown = {}
+        invalid = {}
+        for arg_name, arg_val in kwargs.items():
+            try:
+                if not self._check_arg_value(arg_name, arg_val, noraise=True):
+                    invalid[arg_name] = arg_val
+            except cmd_ex.UnknownArguments:
+                unknown[arg_name] = arg_val
+
+        cmd_ex.UnknownArguments.raise_on_true(unknown)
+        cmd_ex.InvalidArguments.raise_on_true(invalid)
+
+    def get_set_args(self, args_in, args_out=None, args_order=None, args_bl=set(), args_wl=set()):
+        """
+        @brief A command builder helper function.
+            Strips the dict off the unset (default) arguments.
+            Learns which fields in 'args_in' (dict or argparse.Namespace instance), possibly
+            parsed earlier, had been set before the parsing took place.
+            If an intermediate dict is provided in 'args_out', mutate in place and overwrite
+            it on collision.
         """
         if args_out is None:
             args_out = OrderedDict()
@@ -290,15 +378,10 @@ class CommandHelper(object):
         if isinstance(args_in, Command):
             args_in = args_in._ns  # pylint: disable=protected-access
         if isinstance(args_in, argparse.Namespace):
-            args_in = args_in.__dict__
+            args_in = vars(args_in)
 
-        if isinstance(args_in, dict):
-            pass
-        else:
-            raise Exception('get_set_args(): Argument error: Expected dict, got %s', type(args_in))
-
-        if self.default_image.__dict__ == args_in:
-            return args_out
+        if not isinstance(args_in, Mapping):
+            raise TypeError("Mapping expected. Got {}".format(type(args_in)))
 
         if not args_order:
             if self.arg_builder.args_order:
@@ -306,10 +389,18 @@ class CommandHelper(object):
             else:
                 args_order = sorted(args_in)
 
-        _marker = object()
         for k in args_order:
-            if args_in.get(k, _marker) != self.default_image.__dict__.get(k, _marker):
-                args_out[k] = args_in[k]
+            if k in args_bl:  # blacklisted, skip
+                continue
+            if k in args_wl:  # whitelisted, accept
+                with suppress(KeyError):
+                    args_out[k] = args_in[k]
+                continue
+
+            with suppress(AttributeError, KeyError):
+                v = getattr(self.default_image, k)
+                if v != args_in[k]:
+                    args_out[k] = args_in[k]
 
         return args_out
 
@@ -317,13 +408,15 @@ class CommandHelper(object):
         """A command builder helper function.
 
         Reverse parse_args() functionality.
-        Converts the input sequence of command arguments(key[:value] pairs) to a command options list.
+        Converts the input sequence of command arguments(key[:value] pairs) to a
+            command options list.
 
         """
         return self.arg_builder.build_args(self.optarg_map, self.posarg_map, kwargs)
 
 
 _DEFAULT_CMD_HELPER = CommandHelper()
+_LOCAL_DEFAULT = object()
 
 
 class Command(Mapping):
@@ -337,31 +430,42 @@ class Command(Mapping):
         return cls(cmd)
 
     @classmethod
-    def from_kwargs(cls, **kwargs):
-        return cls(kwargs)
+    def _validate_args(cls, *args):
+        unknown_iter = (a for a in args if not hasattr(cls.CMD_HELPER.default_image, a))
+        cmd_ex.UnknownArguments.raise_on_true_lists(list(unknown_iter))
 
     @classmethod
-    def _validate_dict(cls, **kwargs):
-        unknown = {}
-        for k in kwargs:
-            if not hasattr(cls.CMD_HELPER.default_image, k):
-                unknown[k] = kwargs[k]
+    def _validate_kwargs(cls, **kwargs):
+        cls.CMD_HELPER.check_values(**kwargs)
 
-        if unknown:
-            raise UnknownArguments(**unknown)
+    @classmethod
+    def validate(cls, *args, **kwargs):
+        unknown = cmd_ex.UnknownArguments()
+        invalid = cmd_ex.InvalidArguments()
+        try:
+            cls._validate_args(*args)
+        except cmd_ex.UnknownArguments as ex_unknown:
+            unknown.extend_args(ex_unknown)
+
+        try:
+            cls._validate_kwargs(**kwargs)
+        except cmd_ex.UnknownArguments as ex_unknown:
+            unknown.update(ex_unknown)
+        except cmd_ex.InvalidArguments as ex_invalid:
+            invalid.update(ex_invalid)
+
+        unknown.raise_on_true()
+        invalid.raise_on_true()
 
     def _update_kwargs(self, **kwargs):
-        self._validate_dict(**kwargs)
         self._ns.__init__(**kwargs)
 
     def _extend_kwargs(self, **kwargs):
-        self._validate_dict(**kwargs)
         set_self = self.get_set_args()
-        to_update = {k: kwargs[k] for k in kwargs if k not in set_self}
+        to_update = {k: v for k, v in kwargs.items() if k not in set_self}
         self._ns.__init__(**to_update)
 
     def _unset_kwargs(self, **kwargs):
-        self._validate_dict(**kwargs)
         to_update = {k: getattr(self.CMD_HELPER.default_image, k) for k in kwargs}
         self._ns.__init__(**to_update)
 
@@ -369,30 +473,63 @@ class Command(Mapping):
         # technically Mapping has no __init__, but we keep this to be proper for MI
         super(Command, self).__init__()  # pylint: disable=no-member
 
-        self._ns = None
+        self._ns = copy.copy(self.CMD_HELPER.default_image)
+
         for cmd in args:
             self._init_cmd(cmd)
 
-        if self._ns is None:
-            self._ns = copy.copy(self.CMD_HELPER.default_image)
-
         if kwargs:
-            self._update_kwargs(**kwargs)
+            self._update_kwargs(**self._to_dict(kwargs))
 
         assert self._ns
 
     def _init_cmd(self, cmd_rep):
+        if not cmd_rep:
+            return
+
         if isinstance(cmd_rep, Command):
-            self._ns = copy.deepcopy(cmd_rep._ns)  # pylint: disable=protected-access
+            if not isinstance(cmd_rep, self.__class__):
+                raise TypeError(type(cmd_rep))
         elif isinstance(cmd_rep, argparse.Namespace):
-            self._ns = copy.deepcopy(cmd_rep)
-        elif isinstance(cmd_rep, dict):
-            self._ns = copy.deepcopy(self.CMD_HELPER.default_image)
-            self._update_kwargs(**cmd_rep)
-        elif isinstance(cmd_rep, list):
-            self._ns = self._list_2_ns(cmd_rep)
-        elif isinstance(cmd_rep, str):
-            self._ns = self._str_2_ns(cmd_rep)
+            if vars(self._ns).keys() != vars(cmd_rep).keys():
+                raise TypeError(type(cmd_rep))
+
+        self._update_kwargs(**self._to_dict(cmd_rep))
+
+    # various constructoion methods
+    @classmethod
+    def from_kwargs(cls, **kwargs):
+        """
+        Enforce argument specification by keyword arguments (**) only for all arguments.
+        Arguments are identified and indexed with their associated key from keyword arguments (**).
+        """
+        return cls(kwargs)
+
+    @classmethod
+    def from_posargs_optkwargs(cls, *args, **kwargs):
+        """
+        Enforce argument specification by:
+            1) positional arguments (*) for positional arguments
+            2) keyword arguments (**) for optional arguments
+        only.
+
+        Positional arguments are indexed with their associated index in positionoal args (*)
+        and optional arguments are indexed with their associated key from keyword arguments (**).
+        """
+        extras = cmd_ex.UnknownArguments(*list(args[len(cls.CMD_HELPER.posarg_list):]))
+        kwargs.update({k: v for k, v in zip(cls.CMD_HELPER.posarg_list, args)})
+
+        try:
+            cls.validate(**kwargs)
+        except cmd_ex.UnknownArguments as ex_unknown:
+            extras.update(ex_unknown).raise_on_true()
+        except cmd_ex.InvalidArguments:
+            extras.raise_on_true()
+            raise
+        else:
+            extras.raise_on_true()
+
+        return cls(*args, **kwargs)
 
     # Conversion/parsing methods
     @classmethod
@@ -416,13 +553,11 @@ class Command(Mapping):
 
     # Conversion/building methods
     @classmethod
-    def _ns_2_list(cls, cmd_ns):
+    def _ns_2_list(cls, cmd_ns, **kwargs):
         cmd_list = None
-        try:
-            cmd_args = cls.CMD_HELPER.get_set_args(cmd_ns)
+        with suppress(cmd_ex.CmdArgsException):
+            cmd_args = cls.CMD_HELPER.get_set_args(cmd_ns, **kwargs)
             cmd_list = cls.CMD_HELPER.build_cmd_list(**cmd_args)
-        except CmdArgsException:
-            pass
         return cmd_list
 
     @classmethod
@@ -439,23 +574,26 @@ class Command(Mapping):
         return cls._ns_2_str(cmd._ns)  # pylint: disable=protected-access
 
     def to_args_list(self):
-        return self._ns_2_list(self._ns)
+        return self._ns_2_list(self._ns,
+                               args_bl=self.CMD_HELPER.args_blacklist,
+                               args_wl=self.CMD_HELPER.args_whitelist)
 
     @classmethod
     def _to_dict(cls, cmd_rep):
-        _cmd_dict = None
-        if isinstance(cmd_rep, Command):
-            _cmd_dict = cmd_rep._ns.__dict__  # pylint: disable=protected-access
-        elif isinstance(cmd_rep, argparse.Namespace):
-            _cmd_dict = cmd_rep.__dict__
-        elif isinstance(cmd_rep, dict):
-            _cmd_dict = cmd_rep
-        elif isinstance(cmd_rep, list):
-            _cmd_dict = cls._list_2_ns(cmd_rep).__dict__
-        elif isinstance(cmd_rep, str):
-            _cmd_dict = cls._str_2_ns(cmd_rep).__dict__
+        if isinstance(cmd_rep, (Command, argparse.Namespace, dict)):
+            if isinstance(cmd_rep, dict):
+                cls._validate_kwargs(**cmd_rep)
+            return cls.CMD_HELPER.get_set_args(cmd_rep)
 
-        return _cmd_dict
+        if isinstance(cmd_rep, list):
+            return cls.CMD_HELPER.get_set_args(cls._list_2_ns(cmd_rep))
+        if isinstance(cmd_rep, str):
+            return cls.CMD_HELPER.get_set_args(cls._str_2_ns(cmd_rep))
+
+        raise TypeError(cmd_rep)
+
+    def to_dict(self):
+        return self._to_dict(self)
 
     # Auxilliary
     def __str__(self):
@@ -478,21 +616,57 @@ class Command(Mapping):
         return self.get_set_args().__len__()
 
     def __contains__(self, item):
-        _marker = object()
-        return self.CMD_HELPER.default_image.__dict__.get(item, _marker) \
-            != self._ns.__dict__.get(item, _marker)
+        with suppress(cmd_ex.ArgumentsNotSet):
+            self.__getitem__(item)
+            return True
+        return False
 
     def __getitem__(self, item):
-        return getattr(self._ns, item)
+        # self._validate_kwargs(**{item: None})
+        try:
+            val = getattr(self._ns, item)
+        except AttributeError:
+            raise cmd_ex.UnknownArguments(item)
+        else:
+            default = getattr(self.CMD_HELPER.default_image, item)
+            if val == default:
+                raise cmd_ex.ArgumentsNotSet(item)
+        return val
 
     def __setitem__(self, item, value):
-        return setattr(self._ns, item, value)
+        # self._update_kwargs(**{item: value})
+        try:
+            getattr(self._ns, item)
+        except AttributeError:
+            raise cmd_ex.UnknownArguments(item)
+        else:
+            self.__init__(**{item: value})
 
-    def get(self, item, *args):
-        return self.get_set_args().get(item, *args)
+    def __delitem__(self, item):
+        self.__getitem__(item)
+        default = getattr(self.CMD_HELPER.default_image, item)
+        self._ns.__init__(**{item: default})
+
+    def get(self, item, default=None):
+        try:
+            return self.__getitem__(item)
+        except cmd_ex.ArgumentsNotSet:
+            return default
+
+    def pop(self, item, default=_LOCAL_DEFAULT):
+        try:
+            val = self.__getitem__(item)
+        except cmd_ex.ArgumentsNotSet:
+            if default is _LOCAL_DEFAULT:
+                raise
+            return default
+        else:
+            self.__delitem__(item)
+            return val
 
     def clear(self):
-        self._ns = self.CMD_HELPER.default_image
+        if bool(self):
+            self._ns = copy.copy(self.CMD_HELPER.default_image)
 
     def keys(self):
         return self.get_set_args().keys()
@@ -503,23 +677,11 @@ class Command(Mapping):
     def items(self):
         return self.get_set_args().items()
 
-    # def iterkeys(self):
-    #     return self.get_set_args().iterkeys()
-    #
-    # def itervalues(self):
-    #     return self.get_set_args().values()
-    #
-    # def iteritems(self):
-    #     return self.get_set_args().items()
-
     # Command arithmetics
     @classmethod
     def merge(cls, cmd_lhs, cmd_rhs):
         # we have to merge dicts before we check defaults with get_set_args()
-        _cmd_dict = cls._to_dict(cmd_lhs)
-        _cmd_dict.update(cls._to_dict(cmd_rhs))
-        cmd = cls(**cls.CMD_HELPER.get_set_args(_cmd_dict))
-        return cmd
+        return cls(cmd_lhs, cmd_rhs)
 
     def update(self, *args, **kwargs):
         """Add new stuff and update existing
@@ -527,18 +689,10 @@ class Command(Mapping):
         cmd{a: 1, b: 2, c:3} + (cmd{b: 'b', c: 'c', d: 'd'}) => cmd{a: 1, b: 'b', c: 'c', d: 'd'}
 
         """
-        for cmd in args:
-            self._update_cmd(cmd)
-
-        if kwargs:
-            self._update_kwargs(**kwargs)
+        for cmd in itertools.chain(args, [kwargs]):
+            self._update_kwargs(**self._to_dict(cmd))
 
         return self
-
-    def _update_cmd(self, cmd_rep):
-        _cmd_dict = self._to_dict(cmd_rep)
-        assert _cmd_dict is not None
-        self._update_kwargs(**self.CMD_HELPER.get_set_args(_cmd_dict))
 
     def extend(self, *args, **kwargs):
         """Add new stuff only
@@ -546,18 +700,10 @@ class Command(Mapping):
         cmd{a: 1, b: 2, c:3} + (cmd{b: 'b', c: 'c', d: 'd'}) => cmd{a: 1, b: 2, c: 3, d: 'd'}
 
         """
-        for cmd in args:
-            self._extend_cmd(cmd)
-
-        if kwargs:
-            self._extend_kwargs(**kwargs)
+        for cmd in itertools.chain(args, [kwargs]):
+            self._extend_kwargs(**self._to_dict(cmd))
 
         return self
-
-    def _extend_cmd(self, cmd_rep):
-        _cmd_dict = self._to_dict(cmd_rep)
-        assert _cmd_dict is not None
-        self._extend_kwargs(**self.CMD_HELPER.get_set_args(_cmd_dict))
 
     def unset(self, *args, **kwargs):
         """Remove stuff
@@ -565,22 +711,24 @@ class Command(Mapping):
         cmd{a: 1, b: 2, c: 3} - {cmd{b: 'b', c: 'c', d: 'd'} => cmd{a: 1}
 
         """
-        for cmd in args:
+        for cmd in itertools.chain(args, [kwargs]):
             self._unset_cmd(cmd)
-
-        if kwargs:
-            self._unset_kwargs(**kwargs)
 
         return self
 
     def _unset_cmd(self, cmd_rep):
-        _cmd_dict = self._to_dict(cmd_rep)
-        assert _cmd_dict is not None
-        self._unset_kwargs(**self.CMD_HELPER.get_set_args(_cmd_dict))
+        # unsetting neednt comply the "set" arguments only idiom for dicts, will unset all keys
+        if isinstance(cmd_rep, dict):
+            self._validate_kwargs(**cmd_rep)
+            self._unset_kwargs(**cmd_rep)
+        else:
+            _cmd_dict = self._to_dict(cmd_rep)
+            self._unset_kwargs(**_cmd_dict)
 
     def __eq__(self, other):
         if isinstance(other, Command):
-            return self._ns == other._ns  # pylint: disable=protected-access
+            return (isinstance(other, self.__class__) or isinstance(self, other.__class__))\
+                and self._ns == other._ns
         elif isinstance(other, argparse.Namespace):
             return self._ns == other
         elif isinstance(other, dict):

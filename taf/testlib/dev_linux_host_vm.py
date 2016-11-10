@@ -17,12 +17,33 @@
 `OpenStack VM host device related functionality`
 
 """
+import copy
+import functools
 
 from . import clissh
-from .dev_linux_host import GenericLinuxHost, NICHelper
+
+from .dev_linux_host import NICHelper, GenericLinuxHost
 
 
 class GenericLinuxVirtualHost(GenericLinuxHost):
+    """
+    """
+    def _pred_mgmt_in_nic_ips(self, nic):
+        return self.nated_mgmt in nic['ip_addr']
+
+    @functools.wraps(_pred_mgmt_in_nic_ips)
+    def NIC_IF_MGMT(self):
+        return NICHelper.pwrap_bool_true(self._pred_mgmt_in_nic_ips)
+
+    @functools.wraps(_pred_mgmt_in_nic_ips)
+    def NIC_IF_NO_MGMT(self):
+        return NICHelper.pwrap_bool_false(self._pred_mgmt_in_nic_ips)
+
+    @classmethod
+    def class_init(cls):
+        super_class = super(GenericLinuxVirtualHost, cls)
+        cls.__NIC_FILTERS_MAP__ = copy.deepcopy(super_class.__NIC_FILTERS_MAP__)
+        cls.__NIC_FILTERS_MAP__['no_mgmt'] = cls.NIC_IF_NO_MGMT
 
     def __init__(self, config, opts):
         super(GenericLinuxVirtualHost, self).__init__(config, opts)
@@ -52,74 +73,8 @@ class GenericLinuxVirtualHost(GenericLinuxHost):
             self.ssh = clissh.CLISSH(self.ipaddr, self.ssh_port, self.ssh_user, self.ssh_pass,
                                      pkey=self.ssh_pkey, key_filename=self.ssh_pkey_file)
 
-    def _get_nics(self, force_check=False):
-        """Returns list of detected network adapterrs in the system
 
-        Notes:
-            Order of the adapters is very important. It should be according to how the
-            networks are defined when VM is created. Proper order is in self.os_networks
-
-        Args:
-            force_check(bool): force re-reading nics
-
-        Returns:
-            list: list of nics
-
-        """
-        if self.nics is None or force_check:
-            self.nics = []
-            iface_client = self.tempest_ui.interface_client
-            detected_nics = self.ui.get_table_ports(ip_addr=True)
-            os_int = iface_client.list_interfaces(self.id)['interfaceAttachments']
-            for net, _, _ in self.os_networks:
-                for interf in (int_net for int_net in os_int if int_net['net_id'] == net['id']):
-                    for idx, nic in enumerate(detected_nics):
-                        if interf['mac_addr'] == nic['macAddress']:
-                            self.nics.append(detected_nics.pop(idx))
-                            break
-            self.nics.extend(detected_nics)
-
-        return self.nics
-
-    def get_nics_if(self, f, force_check=False):
-        if f:
-            return list(filter(f, self._get_nics(force_check)))
-        return self._get_nics()
-
-    def map_nics_if(self, f, mapper=NICHelper.NIC_OBJ, force_check=False):
-        nics = self.get_nics_if(f, force_check)
-        if mapper:
-            return list(map(mapper, nics))
-        return nics
-
-    def get_nics(self, no_lo=True, mapper=None, force_check=False):
-        f = NICHelper.NICS_IF_NO_LO if no_lo else None
-        return self.map_nics_if(f=f, mapper=mapper, force_check=force_check)
-
-    def get_nics_names(self, no_lo=True, force_check=False):
-        f = NICHelper.NICS_IF_NO_LO if no_lo else None
-        mapper = NICHelper.NIC_NAME
-        return self.map_nics_if(f=f, mapper=mapper, force_check=force_check)
-
-    def get_nics_ips(self, no_lo=True, force_check=False):
-        f = NICHelper.NICS_IF_NO_LO if no_lo else None
-        mapper = NICHelper.NIC_IP_ADDR
-        return self.map_nics_if(f=f, mapper=mapper, force_check=force_check)
-
-    def waiton(self, timeout=180):
-        """Wait until device is fully operational.
-
-        Args:
-            timeout(int):  Wait timeout
-
-        Raises:
-            SwitchException:  device doesn't response
-
-        Returns:
-            dict:  Status dictionary from probe method or raise an exception.
-
-        """
-        return super(GenericLinuxVirtualHost, self).waiton(timeout)
+GenericLinuxVirtualHost.class_init()
 
 
 ENTRY_TYPE = "openstack"

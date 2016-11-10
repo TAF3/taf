@@ -359,6 +359,7 @@ class VirtualEnv(object):
             self.class_logger.debug('Reused')
             return True
 
+        self._delete_external_elements(**clients)
         self.class_logger.debug('No reuse')
         # cleanup
         self._delete_external_elements()
@@ -482,16 +483,6 @@ class VirtualEnv(object):
             self.handle.addCleanup(routers_client.delete_router, router['id'])
         return router
 
-    def add_router_interface(self, router_id, routers_client=None, subnet_id=None):
-        """
-        """
-        if not routers_client:
-            routers_client = self.handle.os_adm.routers_client
-
-        routers_client.add_router_interface(router_id, subnet_id=subnet_id)
-        iface_cleaner = routers_client.remove_router_interface
-        self.handle.addCleanup(iface_cleaner, router_id, subnet_id=subnet_id)
-
     def delete_router(self, router_id, routers_client=None, ports_client=None):
         """
         """
@@ -507,6 +498,16 @@ class VirtualEnv(object):
 
         self._remove_router_interfaces(router_id, **clients)
         routers_client.delete_router(router_id)
+
+    def add_router_interface(self, router_id, subnet_id=None, routers_client=None):
+        """
+        """
+        if not routers_client:
+            routers_client = self.handle.os_adm.routers_client
+
+        routers_client.add_router_interface(router_id, subnet_id=subnet_id)
+        iface_cleaner = routers_client.remove_router_interface
+        self.handle.addCleanup(iface_cleaner, router_id, subnet_id=subnet_id)
 
     def _remove_router_interfaces(self, router, routers_client=None, ports_client=None):
         """
@@ -847,8 +848,7 @@ class VirtualEnv(object):
                 break
         assert flavor
 
-        self.handle.addCleanup(flv_client.delete_flavor,
-                               flavor['id'])
+        self.handle.addCleanup(flv_client.delete_flavor, flavor['id'])
 
         if kwargs:
             try:

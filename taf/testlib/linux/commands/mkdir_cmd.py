@@ -21,7 +21,7 @@
 from argparse import ArgumentParser
 
 from testlib.linux.commands.cmd_helper import Command, CommandHelper, ArgumentBuilder
-from testlib.custom_exceptions import UnknownArguments, ArgumentsCollision
+from testlib.linux.commands import cmd_exceptions as cmd_ex
 
 
 MKDIR_OPTS = {
@@ -127,13 +127,17 @@ class CmdMkdirHelper(CommandHelper):
         return cls._check_args(**__kwargs)
 
     @classmethod
-    def _check_args(cls, __mode=None, __parents=False, __verbose=False, __context=None,
-                    __help=False, __version=False, __name=None, **__kwargs):
-        if not __name:
-            raise ArgumentsCollision(name=__name)
+    def _check_args(
+            cls,
+            __mode=None, __parents=False, __verbose=False, __context=None, __help=False,
+            __version=False, __name=None,
+            **__kwargs):
 
         if __kwargs:
-            raise UnknownArguments(**cls._decode_args(**__kwargs))
+            raise cmd_ex.UnknownArguments(**cls._decode_args(**__kwargs))
+
+        if not __name:
+            raise cmd_ex.ArgumentsNotSet('name')
 
         return True
 

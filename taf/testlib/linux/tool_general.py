@@ -20,6 +20,8 @@
 
 import os
 
+from contextlib import suppress
+
 from testlib.linux import service_lib
 from testlib.custom_exceptions import UICmdException
 
@@ -89,15 +91,16 @@ class GenericTool(object):
         # and maybe --pty and no -q
         systemd_cmd_str = "systemd-run --unit={0} -q -- {1}".format(service_name, command)
         cmd_str = (prefix if prefix else '') + systemd_cmd_str
-        self.run_command(cmd_str, **kwargs)
+        self.run_command(cmd_str, timeout=timeout, **kwargs)
         self.instances[tool_instance_id] = {
             'command': cmd_str,
             'instance_id': tool_instance_id,
             'service_name': service_name,
             'service_manager': service_lib.SpecificServiceManager(service_name, self.run_command),
         }
+
         # Wait for tool instance to start
-        self.is_active(tool_instance_id)
+        assert self.is_active(tool_instance_id)
         return tool_instance_id
 
     def get_results(self, instance_id):
@@ -133,11 +136,9 @@ class GenericTool(object):
         """
         service_manager = self.instances[instance_id]['service_manager']
         # rc = 3, stdout = 'failed\n
-        try:
+        with suppress(UICmdException):
             out, _, _ = service_manager.is_active(timeout=timeout, expected_rcs=expected_rcs)
             return out.strip() == 'active'
-        except UICmdException:
-            pass
         # use exact compare, not in
         # possible values are 'active' or 'unknown' or failed with rc 3.
         # only return true if we get 'active'
@@ -169,3 +170,48 @@ class GenericTool(object):
         """
         service_manager = self.instances[instance_id]['service_manager']
         service_manager.stop(timeout=timeout, expected_rcs=expected_rcs)
+
+
+class StateError(Exception):
+    pass
+
+
+class GenericToolContext(object):
+    """
+    Generic linux tool context manager
+    """
+    def __init__(self, tool, *args, **kwargs):
+        super(GenericToolContext, self).__init__()
+        self.tool = tool
+        self.args = args
+        self.kwargs = kwargs
+        self.service_id = None
+        # self.service_start = functools.partial(self.tool.start, *args, **kwargs)
+
+    def __enter__(self):
+        if self.service_id:
+            raise StateError('Cannot reuse this context')
+        self.service_id = self.tool.start(*self.args, **self.kwargs)
+        # self.service_stop = functools.partial(self.tool.stop, self.service_id)
+        return self.tool
+
+    def __exit__(self, exc_type, exc_val, exc_traceback):
+        self.tool.stop(self.service_id)
+
+
+class GenericToolContextReentrant(GenericToolContext):
+    """
+    Generic linux tool context manager *reentrant*
+    """
+    def __exit__(self, exc_type, exc_val, exc_traceback):
+        super(GenericToolContextReentrant, self).__exit__(exc_type, exc_val, exc_traceback)
+        self.service_id = None
+
+
+def service_context(context_type=GenericToolContext):
+    def tool_wrapper(tool, *args, **kwargs):
+        return context_type(tool, *args, **kwargs)
+    return tool_wrapper
+
+
+GenericTool.Service = service_context(context_type=GenericToolContext)

@@ -23,9 +23,10 @@ from collections import OrderedDict
 
 import pytest
 
-from testlib.custom_exceptions import UnknownArguments, ArgumentsCollision
-from testlib.linux.commands import mkdir_cmd
+from testlib.helpers import merge_dicts
+from testlib.linux.commands import cmd_exceptions as cmd_ex
 from testlib.linux.commands.cmd_helper import Command, CommandHelper
+from testlib.linux.commands import mkdir_cmd
 
 
 def pytest_raises(exc_iter):
@@ -44,7 +45,7 @@ class TestCmdHelperBasic(object):
     @pytest_raises(SystemExit)
     def test_empty_argparse_raises_exception(self):
         # create a Command with the default empty CommandHelper
-        Command(list(''))
+        Command.CMD_HELPER.parse_args(list(''))
 
     def test_inits(self):
         l = Command(list('abcde'))
@@ -59,9 +60,9 @@ class TestCmdHelperBasic(object):
         d = Command.copy(l)
         assert l == d
 
-    def test_validate_dict(self):
+    def test_validate(self):
         l = Command(list('abcde'))
-        l._validate_dict(**{k: k for k in 'abcde'})
+        l.validate(**{k: k for k in 'abcde'})
 
     def test_get(self):
         l = Command(list('abcde'))
@@ -100,11 +101,11 @@ class TestCommandHelper(object):
         return cmd_list
 
     def test_cmd_helper_start_empty(self):
-        with pytest.raises(ArgumentsCollision):
+        with pytest.raises(cmd_ex.ArgumentsNotSet):
             mkdir_cmd.CmdMkdir().check_args()
 
     def test_cmd_helper_start_unknown(self):
-        with pytest.raises(UnknownArguments):
+        with pytest.raises(cmd_ex.UnknownArguments):
             mkdir_cmd.CmdMkdir(unknown_argument=object()).check_args()
 
     def test_cmd_helper_start_ok(self):
@@ -153,7 +154,7 @@ class TestCommandHelper(object):
         cmd = mkdir_cmd.CmdMkdir(**mkdir_kwargs)
         cmd.check_args()
 
-        cmd.update(parents=True, version=False)
+        cmd.update(parents=True)
         cmd.check_args()
 
         output_list = mkdir_cmd.MkdirArgumentBuilder.ARGS_ORDERED
@@ -163,8 +164,8 @@ class TestCommandHelper(object):
             'verbose': '-v',
             'context': '-Z=CTX',
             'help': '--help',
-            'version': None,
-            'name': ['some/dir/name'],
+            'version': '--version',
+            'name': ['some/dir/name']
         }
         _args_list = self._build_args_list(output_list, output_dict)
 
@@ -236,24 +237,24 @@ class TestCommandHelper(object):
     def test_cmd_helper_mkdir_merge(self):
         mkdir_kwargs_lhs = {
             'mode': 'a+x',
-            'parents': False,
-            'verbose': True,
+            'parents': True,
+            'verbose': False,
             'context': 'CTX',
-            'help': True,
-            'version': True,
-            'name': 'lhs',
+            'help': False,
+            'version': False,
+            'name': 'lhs'
         }
         cmd_lhs = mkdir_cmd.CmdMkdir(**mkdir_kwargs_lhs)
         cmd_lhs.check_args()
 
         mkdir_kwargs_rhs = {
             'mode': 'a+x',
-            'parents': True,
-            'verbose': False,
+            'parents': False,
+            'verbose': True,
             'context': 'CTX',
-            'help': False,
-            'version': False,
-            'name': 'rhs',
+            'help': True,
+            'version': True,
+            'name': 'rhs'
         }
         cmd_rhs = mkdir_cmd.CmdMkdir(**mkdir_kwargs_rhs)
         cmd_rhs.check_args()
@@ -263,5 +264,5 @@ class TestCommandHelper(object):
 
         assert cmd['name'] == 'rhs'
         assert cmd['parents']
-        assert not cmd['verbose']
-        assert cmd._to_dict(cmd) == mkdir_kwargs_rhs
+        assert 'parents' in cmd
+        assert cmd.to_dict() == merge_dicts(mkdir_kwargs_rhs, {'parents': True})

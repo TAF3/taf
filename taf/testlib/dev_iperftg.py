@@ -17,24 +17,27 @@
 `Remote Iperf traffic generators specific functionality`
 
 """
-import copy
 import time
-
 import pytest
 
-from . import loggers
-from . import tg_template
+from contextlib import suppress, contextmanager
+
+from . import loggers, tg_template
+
 from .dev_linux_host import GenericLinuxHost
 from .dev_linux_host_vm import GenericLinuxVirtualHost
 from .custom_exceptions import TGException
 
-from testlib.linux.iperf import iperf_cmd
+from .linux.iperf import iperf, iperf_cmd
 
 
 HOST_MAP = {
     "riperf": GenericLinuxHost,
     "riperf_vm": GenericLinuxVirtualHost,
 }
+
+
+__0__ = object()
 
 
 class RemoteIperfTG(tg_template.GenericTG):
@@ -83,7 +86,7 @@ class RemoteIperfTG(tg_template.GenericTG):
 
         Args:
             config(dict):  Configuration information.
-            opts(OptionParser):  py.test config.option object which contains all py.test cli options.
+            opts(OptionParser):  py.test config.option object containing all py.test cli options.
 
         """
         super(RemoteIperfTG, self).__init__(config, opts)
@@ -112,8 +115,11 @@ class RemoteIperfTG(tg_template.GenericTG):
 
         # Stream IDs
         self.streams = {}
+        self.stream_results = []
+
         # Iperf server interfaces
         self.sniff_ports = {}
+        self.sniff_results = []
         # Store information about configured network namespaces
         self.namespaces = {}
         # Store information about configured iface IP addresses
@@ -207,74 +213,77 @@ class RemoteIperfTG(tg_template.GenericTG):
         self.stop_streams()
         self.streams.clear()
 
-    def set_stream(self, dst_ip=None, src_ip=None, l4_proto='tcp', l4_port=5001, l4_bandwidth=None,
-                   duration=10, interval=10, units='m', iface=None, options=None, command=None):
-        """Set traffic stream with specified parameters on specified TG port.
-
-        Notes:
-            Method generates option for Iperf launching in client mode
-
-        Args
-            dst_ip(str):  Iperf server IP address('client' iperf client option).
-            src_ip(str):  Local TG interface IP address('bind' iperf general option).
-            l4_proto(str):  Iperf L4 proto. tcp|udp('udp' iperf general option).
-            l4_port(int):  Iperf L4 port('port' iperf general option).
-            l4_bandwidth(str):  Iperf UDP bandwidth('bandwidth' iperf general option).
-            duration(int):  Traffic transmit duration('time' iperf client option).
-            interval(int):  Iperf statistics interval('interval' iperf general option).
-            units(str):  Iperf statistics reports foramat('format' iperf general option).
-            iface(str, tuple):  Interface to use for packet sending.
-            options(list of str): intermediate iperf options list
-            command(argparse.Namespace): intermediate iperf command object
-
-        Returns:
-            int:  stream id
-
-        Examples::
-
-            stream_id_1 = tg.set_stream(dst_ip='1.1.1.1', iface=iface)
-            stream_id_2 = tg.set_stream(dst_ip='1.1.1.1', l4_proto='udp', iface=iface)
-
+    def set_stream(self, iface=None, dst_ip=__0__, src_ip=__0__, l4_proto=__0__, l4_port=__0__,
+                   l4_bandwidth=__0__, duration=__0__, interval=__0__, units=__0__,
+                   options=None, command=None):
         """
-        stream_id = (max(self.streams.keys()) + 1) if self.streams else 1
+        @brief  Set traffic stream with specified parameters on specified TG port.
+        @note  Method generates option for Iperf launching in client mode
 
-        if l4_proto not in {'tcp', 'udp'}:
-            raise TGException("l4_proto has incorrect value.")
+        @param iface:  Interface to use for packet sending.
+        @type  iface:  str
+        @param dst_ip:  Iperf server IP address('client' iperf client option).
+        @type  dst_ip:  str
+        @param src_ip:  Local TG interface IP address('bind' iperf general option).
+        @type  src_ip:  str
+        @param l4_proto:  Iperf L4 proto. tcp|udp('udp' iperf general option).
+        @type  l4_proto:  str
+        @param l4_port:  Iperf L4 port('port' iperf general option).
+        @type  l4_port:  int
+        @param l4_bandwidth:  Iperf UDP bandwidth('bandwidth' iperf client option).
+        @type  l4_bandwidth:  str
+        @param duration:  Traffic transmit duration('time' iperf client option).
+        @type  duration:  int
+        @param interval:  Iperf statistics interval('interval' iperf general option).
+        @type  interval:  int
+        @param units:  Iperf statistics reports foramat('format' iperf general option).
+        @type  units:  str
 
+        @param options: intermediate iperf options list
+        @type  options: list of str
+        @param command: intermediate iperf command object
+        @type  command: iperf_cmd.CmdIperf
+
+        @rtype:  int
+        @return:  stream id
+        @par Example:
+        @code{.py}
+        stream_id_1 = tg.set_stream(dst_ip='1.1.1.1', iface=iface)
+        stream_id_2 = tg.set_stream(dst_ip='1.1.1.1', iface=iface, l4_proto='udp')
+        @endcode
+        """
         kwargs = {
             'client': dst_ip,
             'time': duration,
             'bandwidth': l4_bandwidth,
 
-            'interval': interval,
-            'format': units,
+            'interval': iperf_cmd._DEFAULT_INTERVAL if interval is __0__ else interval,
+            'format': iperf_cmd._DEFAULT_FORMAT if units is __0__ else units,
             'port': l4_port,
             'bind': src_ip,
-            'udp': 'udp' in l4_proto,
+            'udp': True if l4_proto == 'udp' else __0__,
         }
+        # filter out default arguments first:
+        # 1) function defaults:
+        kwargs = {k: v for k, v in kwargs.items() if v is not __0__}
+        # 2) command defaults: handled by Command by design
+        # kwargs = iperf_cmd.CmdIperf.CMD_HELPER.get_set_args(kwargs)
 
-        cmd = iperf_cmd.CmdIperf(**kwargs)
-        # Let the options/command overwrite the method arguments in case of collision
-        if options:
-            _opts_cmd = iperf_cmd.CmdIperf(options)
-            cmd.update(_opts_cmd)
+        cmd = iperf_cmd.CmdIperf(kwargs, options, command)
+        cmd.check_args()
 
-        if command:
-            cmd.update(command)
-
-        if not cmd.get('client'):
-            raise TGException("Server address (-c/--client) is not set for the iperf client.")
-
+        stream_id = (max(self.streams.keys()) + 1) if self.streams else 1
         self.streams[stream_id] = {
             'iface': iface,
             'iperf_cmd': cmd,
         }
 
         # Add src_ip address to specific TG port
-        if src_ip:
-            self.iface_config(iface, intf_ip_addr=src_ip)
+        bind = cmd.get('bind')
+        if iface and bind:
+            self.iface_config(iface, intf_ip_addr=bind)
 
-        self.class_logger.info("Stream ID:%s was set." % stream_id)
+        self.class_logger.info("Stream ID:%s was set.", stream_id)
         return stream_id
 
     def send_stream(self, stream_id, get_result=False):
@@ -288,24 +297,21 @@ class RemoteIperfTG(tg_template.GenericTG):
             list:  iperf client output
 
         """
-
         stream = self.streams.get(stream_id)
         if not stream:
             raise TGException("Stream with ID {} was not configured".format(stream_id))
 
-        port = stream['iface']
+        prefix = None
+        iface = stream['iface']
         # Verify that there is no ports already used by another iperf instances
-        if port and port in self.used_ifaces:
-            raise TGException("There is an another iperf on port {}.".format(port))
+        if iface:
+            if iface in self.used_ifaces:
+                raise TGException("There is an another iperf on port {}.".format(iface))
+            if iface in self.namespaces:
+                stream['prefix'] = prefix = self.namespace_prefix.format(self.namespaces[iface])
+            self.used_ifaces.add(iface)
 
-        if port and port in self.namespaces:
-            stream['prefix'] = self.namespace_prefix.format(self.namespaces[port])
-
-        if port:
-            self.used_ifaces.add(port)
-
-        cmd = stream.get('iperf_cmd')
-        prefix = stream.get('prefix')
+        cmd = stream['iperf_cmd']
         iid = self._lhost.ui.iperf.start(prefix=prefix, command=cmd)
         stream['instance_id'] = iid
 
@@ -330,43 +336,56 @@ class RemoteIperfTG(tg_template.GenericTG):
         for stream_id in stream_list:
             self.send_stream(stream_id, get_result=get_result)
 
-    def _stop_and_parse_instance(self, iid, **kwargs):
-        """Stops an iperf instance and returns the parsed output.
-
+    def _stop_and_parse_instance(self, iid, stop_kwargs=None, parse_kwargs=None):
+        """
+        Stops an iperf instance and returns the parsed output.
         """
         inst = self._lhost.ui.iperf.instances.get(iid)
-        if inst:
-            self._lhost.ui.iperf.stop(iid, **kwargs)
-            inst_res = self._lhost.ui.iperf.get_results(iid)
-            if inst_res:
-                cmd = inst.get('iperf_cmd')
-                units = cmd.get('format', 'm')
-                threads = cmd.get('parallel', 1)
-                return self._lhost.ui.iperf.parse(inst_res, units=units, threads=threads)
+        if not inst:
+            return None
+
+        if not stop_kwargs:
+            stop_kwargs = {}
+
+        self._lhost.ui.iperf.stop(iid, **stop_kwargs)
+        inst_res = self._lhost.ui.iperf.get_results(iid)
+        if not inst_res:
+            return None
+
+        if not parse_kwargs:
+            parse_kwargs = {}
+        cmd = inst.get('iperf_cmd', {})
+        # output = self._lhost.ui.iperf.parse(inst_res, units=units, threads=threads)
+        stats = iperf.IperfStats(command=cmd, data_raw=inst_res, **parse_kwargs)
+        return stats.retval
 
     def stop_stream(self, stream_id, **kwargs):
-        """Stop an iperf stream.
-
-        Args:
-            stream_id(int):  Stream ID to stop.
-
-        Returns:
-            dict:  iperf output per stream
-
-        Raises:
-            UiCmdException: when check is True and service is already stopped or other error
-
         """
-        stream = self.streams.pop(stream_id, None)
+        @brief  Stop an iperf stream.
+        @param stream_id:  Stream ID to stop.
+        @type  stream_id:  int
+        @rtype:  dict
+        @return:  iperf output per stream
+        @raises: UICmdException: when check is True and service is already stopped or other error
+        """
+        stream = self.streams.get(stream_id)
         if not stream:
             return
 
+        # instance could have already been stopped in send_stream
+        iid = stream.get('instance_id')
+        if not iid:
+            return None
+
         iface = stream.get('iface')
+        res = self._stop_and_parse_instance(iid, stop_kwargs=kwargs, parse_kwargs={'iface': iface})
+        self.stream_results.append(res)
+
         if iface:
             self.used_ifaces.remove(iface)
 
-        # instance could have already been stopped in send_stream
-        return self._stop_and_parse_instance(stream.get('instance_id'), **kwargs)
+        del self.streams[stream_id]
+        return res
 
     def stop_streams(self, stream_list=None, **kwargs):
         """Stop all streams from the list.
@@ -387,76 +406,86 @@ class RemoteIperfTG(tg_template.GenericTG):
 
         return results
 
-    def start_sniff(self, ifaces, src_ip=None, l4_proto='tcp', l4_port=5001, interval=10,
-                    units='m', options=None, command=None):
-        """Starts Iperf server on specified interfaces.
+    def start_sniff(self, ifaces, src_ip=__0__, l4_proto=__0__, l4_port=__0__, interval=__0__,
+                    units=__0__, options=None, command=None):
+        """
+        @brief  Starts Iperf server on specified interfaces.
+        @param ifaces:  List of TG interfaces for capturing.
+        @type  ifaces:  list
+        @param src_ip:  Local TG interface IP address('bind' iperf general option).
+        @type  src_ip:  str
+        @param l4_proto:  Iperf L4 proto. tcp|udp('udp' iperf general option).
+        @type  l4_proto:  str
+        @param l4_port:  Iperf L4 port('port' iperf general option).
+        @type  l4_port:  int
+        @param interval:  Iperf statistics interval('interval' iperf general option).
+        @type  interval:  int
+        @param units:  Iperf statistics reports foramat('format' iperf general option).
+        @type  units:  str
 
-        Args:
-            ifaces(list):  List of TG interfaces for capturing.
-            src_ip(str):  Local TG interface IP address('bind' iperf general option).
-            l4_proto(str):  Iperf L4 proto. tcp|udp('udp' iperf general option).
-            l4_port(int):  Iperf L4 port('port' iperf general option).
-            interval(int):  Iperf statistics interval('interval' iperf general option).
-            units(str):  Iperf statistics reports foramat('format' iperf general option).
-            options(list of str): intermediate iperf options list
-            command(argparse.Namespace): intermediate iperf command object
+        @param options: intermediate iperf options list
+        @type  options: list of str
+        @param command: intermediate iperf command object
+        @type  command: iperf_cmd.CmdIperf
 
-        Returns:
-            None
+        @return:  None
 
-        Examples::
-
-            env.tg[1].start_sniff(['eth0', ], src_ip='1.1.1.1')
-
+        @par Example:
+        @code
+        env.tg[1].start_sniff(['eth0', ], src_ip='1.1.1.1')
+        @endcode
         """
         if not ifaces:
             return
 
-        if l4_proto not in {'tcp', 'udp'}:
-            raise TGException("l4_proto has incorrect value.")
-
         kwargs = {
             'server': True,
-            'interval': interval,
-            'format': units,
+
+            'interval': iperf_cmd._DEFAULT_INTERVAL if interval is __0__ else interval,
+            'format': iperf_cmd._DEFAULT_FORMAT if units is __0__ else units,
             'port': l4_port,
             'bind': src_ip,
-            'udp': 'udp' in l4_proto,
-
-            'command': command,
-            'options': options,
+            'udp': True if l4_proto == 'udp' else __0__,
         }
+        # filter out default arguments first:
+        # 1) function defaults:
+        kwargs = {k: v for k, v in kwargs.items() if v is not __0__}
+        # 2) command defaults: handled by Command by design
+        # kwargs = iperf_cmd.CmdIperf.CMD_HELPER.get_set_args(kwargs)
+
+        cmd = iperf_cmd.CmdIperf(kwargs, options, command)
+        cmd.check_args()
+
+        bind = cmd.get('bind')
 
         for iface in ifaces:
             # Verify that there is no ports already used by another iperf instances
             if iface in self.used_ifaces:
                 raise TGException("There is an another iperf on port {}.".format(iface))
 
-            _kwargs = copy.deepcopy(kwargs)
-
+            prefix = None
             if iface in self.namespaces:
-                _kwargs['prefix'] = self.namespace_prefix.format(self.namespaces[iface])
+                prefix = self.namespace_prefix.format(self.namespaces[iface])
 
             # Add src_ip address to specific TG port
-            if _kwargs.get('bind'):
-                self.iface_config(iface, intf_ip_addr=_kwargs['bind'])
+            if bind:
+                self.iface_config(iface, intf_ip_addr=bind)
 
-            prefix = _kwargs.get('prefix')
-            iid = self._lhost.ui.iperf.start(prefix=prefix, **_kwargs)
+            iid = self._lhost.ui.iperf.start(prefix=prefix, command=cmd)
             self.sniff_ports[iface] = iid
             self.used_ifaces.add(iface)
 
-            self.class_logger.info("Iperf server was started on iface {}." .format(iface))
+            self.class_logger.info("Iperf server was started on iface {}.".format(iface))
 
     def stop_sniff(self, ifaces=None, **kwargs):
-        """Stops sniffing on specified interfaces and returns captured data.
-
-        Args:
-            ifaces(list):  List of interfaces where capturing has to be stopped.
-
-        Returns:
-            dict:  Dictionary where key = interface name, value = iperf statistics.
-
+        """
+        @param check:
+        @type check:
+        brief  Stops sniffing on specified interfaces and returns captured data.
+        @param ifaces:  List of interfaces where capturing has to be stopped.
+        @type  ifaces:  list
+        @rtype:  dict
+        @return:  Dictionary where key = interface name, value = iperf statistics.
         """
         if not ifaces:
             # we destructively iterate over self.sniff_ports, so we have to copy keys
@@ -468,44 +497,47 @@ class RemoteIperfTG(tg_template.GenericTG):
         return results
 
     def _stop_sniff(self, iface, **kwargs):
-        iid = self.sniff_ports.pop(iface, None)
-        assert iid
-        self.used_ifaces.remove(iface)
+        iid = self.sniff_ports.get(iface)
+        if not iid:
+            return None
 
-        return self._stop_and_parse_instance(iid, **kwargs)
+        res = self._stop_and_parse_instance(iid, stop_kwargs=kwargs, parse_kwargs={'iface': iface})
+        self.sniff_results.append(res)
+
+        self.used_ifaces.remove(iface)
+        del self.sniff_ports[iface]
+        return res
 
     def iface_config(self, iface, *args, **kwargs):
-        """High-level interface config utility.
-
-        Args:
-            iface(str): interface name
-
-        Raises:
-            NotImplementedError:  not implemented
-
-        Notes:
-            This method has to support parameters supported by ::ixia::interface_config
-            function for compatibility.
-            You have to check already implemented parameters for other TG types.
-
-        Examples::
-
-            env.tg[1].iface_config(tgport1, intf_ip_addr="10.1.0.101", netns=True)
-
+        """
+        @param iface: interface name
+        @type iface: str
+        @brief  High-level interface config utility.
+        raise  NotImplementedError:  not implemented
+        @note  This method has to support parameters supported by ::ixia::interface_config
+               function for compatibility.
+               You have to check already implemented parameters for other TG types.
+        @par  Example:
+        @code
+        env.tg[1].iface_config(tgport1, intf_ip_addr="10.1.0.101", netns=True)
+        @endcode
         """
         if not set(kwargs).issubset({'intf_ip_addr', 'netns', 'adminMode'}):
             raise NotImplementedError("Method is not implemented for current kwargs.")
-        if kwargs.get('netns', False):
-            # Create network namespaces for current iface
-            self.create_namespaces(iface)
+
+        # Create network namespaces for current iface
+        with suppress(KeyError):
             del kwargs['netns']
-        if 'intf_ip_addr' in kwargs:
-            kwargs['ipAddr'] = "{}/24".format(kwargs['intf_ip_addr'])
-        if iface in self.namespaces:
-            self._lhost.ui.enter_namespace(self.namespaces[iface])
-        self._lhost.ui.modify_ports([iface], **kwargs)
-        if iface in self.namespaces:
-            self._lhost.ui.exit_namespace()
+            self.create_namespaces(iface)
+
+        intf_ip_addr = kwargs.get('intf_ip_addr')
+        if intf_ip_addr:
+            kwargs['ipAddr'] = "{}/24".format(intf_ip_addr)
+
+        iface_ns = self.namespaces.get(iface)
+        if iface_ns:
+            with self.ns_context(iface_ns):
+                self._lhost.ui.modify_ports([iface], **kwargs)
 
     def create_namespaces(self, iface):
         """Create network namespace for specified interface.
@@ -686,20 +718,23 @@ class RemoteIperfTG(tg_template.GenericTG):
         pytest.skip("Method is not supported by Iperf TG")
 
     def get_os_mtu(self, iface=None):
-        """Get MTU value in host OS.
-
-        Args:
-            iface(str):  Interface for getting MTU in host OS
-
-        Returns:
-            int:  Original MTU value
-
-        Examples::
-
-            env.tg[1].get_os_mtu(iface=ports[('tg1', 'sw1')][1])
-
         """
-        pytest.skip("Method is not supported by Iperf TG")
+        @brief  Get MTU value in host OS
+        @param iface:  Interface name for getting MTU in host OS
+        @type  iface:  str
+        @rtype:  int
+        @return:  Original MTU value
+        @par  Example:
+        @code
+        env.tg[1].get_os_mtu(iface=ports[('tg1', 'sw1')][1])
+        @endcode
+        """
+        if not iface:
+            return None
+
+        # TODO: get_port_by(name=iface)/get(port=by(name=iface))?
+        port_it = (port for port in self._lhost.ui.get_table_ports() if port['name'] == iface)
+        return next(port_it, None)
 
     def set_os_mtu(self, iface=None, mtu=None):
         """Set MTU value in host OS.
@@ -716,7 +751,10 @@ class RemoteIperfTG(tg_template.GenericTG):
             env.tg[1].set_os_mtu(iface=ports[('tg1', 'sw1')][1], mtu=1650)
 
         """
-        pytest.skip("Method is not supported by Iperf TG")
+        if not(iface and mtu):
+            return
+
+        self._lhost.ui.modify_ports([iface], mtu=mtu)
 
     def connect_port(self, iface):
         """Simulate port link connecting (set it to admin up etc).
@@ -748,9 +786,55 @@ class RemoteIperfTG(tg_template.GenericTG):
         """
         self.iface_config(iface, adminMode='Down')
 
+    @property
+    def last_stream_result(self):
+        return self.stream_results[-1]
+
+    @property
+    def last_sniff_result(self):
+        return self.sniff_results[-1]
+
+    @contextmanager
+    def ns_context(self, ns):
+        try:
+            self._lhost.ui.enter_namespace(ns)
+            yield self
+        finally:
+            self._lhost.ui.exit_namespace()
+
+    @contextmanager
+    def tg_context(self, do_create=True, do_start=True, do_stop=True):
+        try:
+            if do_create:
+                self.create()
+            if do_start:
+                self.start()
+            yield self
+        finally:
+            if do_stop:
+                self.stop()
+
+    @contextmanager
+    def stream_context(self, **kwargs):
+        try:
+            stream_id = self.set_stream(**kwargs)
+            yield stream_id
+        finally:
+            self.stop_stream(stream_id)
+
+    @contextmanager
+    def sniff_context(self, iface, **kwargs):
+        try:
+            self.start_sniff([iface], **kwargs)
+            yield self
+        finally:
+            self.stop_sniff([iface])
+
 
 ENTRY_TYPE = "tg"
 # used in HOST_MAP
-INSTANCES = {"riperf": RemoteIperfTG,
-             "riperf_vm": RemoteIperfTG}
+INSTANCES = {
+    "riperf": RemoteIperfTG,
+    "riperf_vm": RemoteIperfTG,
+}
 NAME = "tg"

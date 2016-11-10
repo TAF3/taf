@@ -51,20 +51,11 @@ class Suricata(tool_general.GenericTool):
         """
         # intermediate operands in 'command' and 'options', if any,  prevail in this
         # respective order and overrule the (both default and set) method arguments
-        cmd = suricata_cmd.CmdSuricata(**kwargs)
-        if options:
-            _opts_cmd = suricata_cmd.CmdSuricata(options)
-            cmd.update(_opts_cmd)
-
-        if command:
-            cmd.update(command)
+        cmd = suricata_cmd.CmdSuricata(kwargs, options, command)
 
         cmd.check_args()
         _args_list = cmd.to_args_list()
-
-        # TODO: do we need timeout with systemd?
-        cmd_time = cmd.get('time', 10)
-        timeout = int(cmd_time) + 30 if cmd_time else 60
+        assert _args_list
 
         cmd_list = [prefix, self.tool] if prefix else [self.tool]
 
@@ -72,10 +63,10 @@ class Suricata(tool_general.GenericTool):
             cmd_list.extend(_args_list)
 
         cmd_str = ' '.join(map(str, cmd_list))
-        instance_id = super(Suricata, self).start(cmd_str, timeout=timeout)
+        instance_id = super(Suricata, self).start(cmd_str)
         process_info = self.instances[instance_id]
         process_info['launch_args'] = _args_list
-        return process_info
+        return instance_id
 
 
 class SuricataHelper(object):
