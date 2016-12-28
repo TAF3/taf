@@ -87,6 +87,14 @@ ACTIONS = {'enable': {'cmd': [r"printf  '{0}' >> {{collectd_conf}}".format(LOAD_
                        'kwargs_required': False},
            'disable_global': {'cmd': [r"sed  -i '/^<LoadPlugin \({plugin}\|\"{plugin}\"\)>/,/^<\/LoadPlugin>/s/^[^#]/#&/w /dev/stdout' {collectd_conf}"],
                               'kwargs_required': False},
+           'disable_inline': {'cmd': [r"sed  -i '/^LoadPlugin {plugin}\|\"{plugin}\"/s/^[^#]/#&/w /dev/stdout' {collectd_conf}"],
+                             'kwargs_required': False},
+           'enable_inline': {'cmd': [r"sed  -i '/^\s*#\s*LoadPlugin {plugin}\|\"{plugin}\"/s/^\s*#\s*//w /dev/stdout' {collectd_conf}"],
+                              'kwargs_required': False},
+           'enable_param': {'cmd': [ r"sed -i '/^<Plugin \({plugin}\|\"{plugin}\"\)>/,/^<\/Plugin>/s/\(^\s*\)\(#{par}.*\)/\1{par} {val}/w /dev/stdout' {collectd_conf}"],
+                            'kwargs_required': True},
+           'disable_param': {'cmd': [ r"sed -i '/^<Plugin \({plugin}\|\"{plugin}\"\)>/,/^<\/Plugin>/s/\(^\s*\)\({par}.*\)/\1#{par} {val}/w /dev/stdout' {collectd_conf}"],
+                            'kwargs_required': True},
            }
 
 
@@ -129,21 +137,25 @@ def command_generator(action, plugin, collectd_conf):
     """
     def method(**params):
         command_list = []
-        if ACTIONS[action]['kwargs_required'] and not params:
+        this_action = ACTIONS[action]
+        this_cmd = this_action['cmd']
+        kwargs_needed = this_action['kwargs_required']
+        if kwargs_needed and not params:
             raise CustomException("Arguments are required for current method")
-        if not ACTIONS[action]['kwargs_required'] and params:
+        if not kwargs_needed and params:
             raise CustomException("Arguments are not required for current method")
-        if params:
-            if action in {'insert_param', 'change_param', 'change_global'}:
-                for par, val in params.items():
-                    command_list.append([ACTIONS[action]['cmd'][0].format(plugin=plugin, par=par, val=re.escape(str(val)), collectd_conf=collectd_conf)])
-            else:
-                params_to_insert = '\n'.join(['\t{0} {1}'.format(par, val) for par, val in params.items()])
-                for cmd in ACTIONS[action]['cmd']:
-                    command_list.append([cmd.format(plugin=plugin, params_to_insert=params_to_insert, collectd_conf=collectd_conf)])
-        else:
-            for cmd in ACTIONS[action]['cmd']:
+        if not params:
+            for cmd in this_cmd:
                 command_list.append([cmd.format(plugin=plugin, collectd_conf=collectd_conf)])
+        elif action in {'insert_param', 'change_param', 'change_global', 'enable_param', 'disable_param'}:
+            for par, val in params.items():
+                command_list.append(
+                    [this_cmd[0].format(plugin=plugin, par=par, val=re.escape(str(val)), collectd_conf=collectd_conf)])
+        else:
+            params_to_insert = '\n'.join('\t{0} {1}'.format(par, val) for par, val in params.items())
+            for cmd in this_cmd:
+                command_list.append(
+                    [cmd.format(plugin=plugin, params_to_insert=params_to_insert, collectd_conf=collectd_conf)])
         return command_list
     return method
 
@@ -191,3 +203,9 @@ class Collectd(object):
         inserts = r'\n'.join("{} {}".format(param, re.escape(str(val))) for param, val in kwargs.items())
         command = r"sed -i '1s/^/{}\n/' {}"
         self.send_command(command.format(inserts, self.collectd_conf))
+
+    def status(self, exp_rc=frozenset({0, 3})):
+        """
+        @brief Status collectd service
+        """
+        return self.service_manager.status(expected_rcs=exp_rc)
