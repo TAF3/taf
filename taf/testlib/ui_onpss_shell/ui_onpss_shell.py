@@ -124,7 +124,7 @@ class UiOnpssShell(UiHelperMixin, UiInterface):
         self.maa = maa.MatchActionAcceleration(self.cli_send_command)
         self.stresstool = stresstool.StressTool(self.cli_send_command)
         # Collectd tool
-        self.collectd = collectd.Collectd(self.cli_send_command, self.cli_set,
+        self.collectd = collectd.Collectd(self.cli_send_command,
                                           self.switch.config.get('collectd_conf_path'))
         # Hugepages
         self.hugepages = hugepages.HugePages(self.cli_send_command)
