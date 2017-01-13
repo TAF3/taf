@@ -64,8 +64,7 @@ class TestSpecificServiceManager(unittest.TestCase):
         service = "lldpad"
         # should really use --generated-members, but start() is too generic
         self.service_manager.start()  # pylint: disable=no-member
-        assert self.run_mock.call_args[0][
-            0] == "systemctl start %s.service" % service
+        assert self.run_mock.call_args[0][0] == "systemctl start %s.service" % service
 
     def test_stop_with_args(self):
         service = "lldpad"

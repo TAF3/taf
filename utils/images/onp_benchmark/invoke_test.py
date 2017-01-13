@@ -16,7 +16,6 @@ limitations under the License.
 @file: invoke_test.py
 
 """
-
 import time
 import json
 import os
@@ -207,7 +206,7 @@ class NginxExecution(CommandExecution):
         super().__init__()
         self.name = "nginx"
 
-    def _is_special_key(self, key, value):
+    def _is_special_key(self, key):
         return True
 
     def _inject_after_binary(self, str_buffer):

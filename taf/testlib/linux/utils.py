@@ -16,7 +16,6 @@ limitations under the License.
 @file: utils.py
 
 """
-
 import time
 import os
 from contextlib import suppress

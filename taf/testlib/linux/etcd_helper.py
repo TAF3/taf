@@ -16,7 +16,6 @@ limitations under the License.
 @file: etcd_helper.py
 
 """
-
 import itertools
 from contextlib import suppress
 import time

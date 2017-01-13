@@ -29,8 +29,8 @@ import pprint
 DISTRO_METADATA = {
     'fedora-atomic': {
         'ssh_user': 'fedora',
-        'ssh_port': 22
-    }
+        'ssh_port': 22,
+    },
 }
 
 
@@ -41,12 +41,12 @@ CLUSTER_TEMPLATE_DEFAULTS = {
     'labels': {'flannel_backend': 'vxlan'},
     'flavor_id': 'm1.small',
     'master_flavor_id': 'm1.medium',
-    'tls_disabled': 'True'
+    'tls_disabled': 'True',
 }
 
 
 CLUSTER_CONSTS = {
-    'os_distro': 'fedora-atomic'
+    'os_distro': 'fedora-atomic',
 }
 
 
@@ -123,8 +123,8 @@ class Magnum(object):
 
         template.setdefault('external_network_id', self.config.network.public_network_id)
         template.setdefault('keypair_id', self.venv.key['name'])
-        for a_default in CLUSTER_TEMPLATE_DEFAULTS:
-            template.setdefault(a_default, CLUSTER_TEMPLATE_DEFAULTS[a_default])
+        for key, default_value in CLUSTER_TEMPLATE_DEFAULTS.items():
+            template.setdefault(key, default_value)
 
         for setting in ['dns_nameserver', 'http_proxy', 'https_proxy', 'no_proxy']:
             template.setdefault(setting, self.venv.env_settings.get(setting))

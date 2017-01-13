@@ -103,21 +103,21 @@ FILES = {
     ],
     'INTERFACE': [
         FileInfo('if_octets.rrd', 'incoming', 'rx'),
-        FileInfo('if_octets.rrd', 'outgoing', 'tx')
+        FileInfo('if_octets.rrd', 'outgoing', 'tx'),
     ],
     'INTERFACE_BYTES': [
         FileInfo('if_octets.rrd', 'incoming', 'rx'),
-        FileInfo('if_octets.rrd', 'outgoing', 'tx')
+        FileInfo('if_octets.rrd', 'outgoing', 'tx'),
     ],
     'LOAD': [
         FileInfo('load.rrd', 'short', 'shortterm'),
         FileInfo('load.rrd', 'mid', 'midterm'),
-        FileInfo('load.rrd', 'long', 'longterm')
+        FileInfo('load.rrd', 'long', 'longterm'),
     ],
     'DISK': [
         FileInfo('disk_octets.rrd', 'read', 'read'),
-        FileInfo('disk_octets.rrd', 'write', 'write')
-    ]
+        FileInfo('disk_octets.rrd', 'write', 'write'),
+    ],
 }
 
 # Graphs calculations
@@ -126,7 +126,7 @@ CALCULATIONS = {
         Calculation('user_sys',
                     [(FILES['CPU'][0].vname, CDEF[1]),
                      (FILES['CPU'][1].vname, CDEF[1])],
-                    '{0},{1},+')
+                    '{0},{1},+'),
     ],
     'MEMORY': [
         Calculation('user_buffered',
@@ -167,16 +167,16 @@ CALCULATIONS = {
                     '8,{0},*'),
         Calculation('tx_max_bits_neg',
                     [(FILES['INTERFACE'][1].vname, CDEF[1])],
-                    '-8,{0},*')
+                    '-8,{0},*'),
     ],
     # For bytes/sec representation
     'INTERFACE_BYTES': [
         Calculation('tx_max_bytes_neg',
                     [(FILES['INTERFACE_BYTES'][1].vname, CDEF[1])],
-                    '-1,{0},*')
+                    '-1,{0},*'),
     ],
     'LOAD': [],
-    'DISK': []
+    'DISK': [],
 }
 
 # Graph's lines and areas
@@ -184,7 +184,7 @@ DISPLAY = {
     'CPU': [
         LineDef(CALCULATIONS['CPU'][0].vname, None, True, True, 'User\:'),
         LineDef(FILES['CPU'][1].vname, CDEF[1], True, True, 'System\:'),
-        LineDef(FILES['CPU'][2].vname, CDEF[1], True, True, 'Wait-IO\:')
+        LineDef(FILES['CPU'][2].vname, CDEF[1], True, True, 'Wait-IO\:'),
     ],
     'MEMORY': [
         LineDef(CALCULATIONS['MEMORY'][2].vname, None, True, True, 'Free\:',),
@@ -195,17 +195,17 @@ DISPLAY = {
     # For bits/sec representation
     'INTERFACE': [
         LineDef(CALCULATIONS['INTERFACE'][2].vname, None, True, True, 'Incoming\:',),
-        LineDef(CALCULATIONS['INTERFACE'][6].vname, None, True, True, 'Outgoing\:')
+        LineDef(CALCULATIONS['INTERFACE'][6].vname, None, True, True, 'Outgoing\:'),
     ],
     # For bytes/sec representation
     'INTERFACE_BYTES': [
         LineDef(FILES['INTERFACE_BYTES'][0].vname, CDEF[2], True, True, 'Incoming\:',),
-        LineDef(CALCULATIONS['INTERFACE_BYTES'][0].vname, None, True, True, 'Outgoing\:')
+        LineDef(CALCULATIONS['INTERFACE_BYTES'][0].vname, None, True, True, 'Outgoing\:'),
     ],
     'LOAD': [
         LineDef(FILES['LOAD'][0].vname, CDEF[1], True, False, '1 minute average\:'),
         LineDef(FILES['LOAD'][1].vname, CDEF[1], True, False, '5 minute average\:'),
-        LineDef(FILES['LOAD'][2].vname, CDEF[1], True, False, '15 minute average\:')
+        LineDef(FILES['LOAD'][2].vname, CDEF[1], True, False, '15 minute average\:'),
     ],
     'DISK': [
         LineDef(FILES['DISK'][0].vname, CDEF[2], True, False, 'Read\:'),

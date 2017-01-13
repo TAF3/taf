@@ -92,11 +92,11 @@ class Config(object):
 class Test(ABC):
 
     PARSERS = {
-        'ab': AbParser
+        'ab': AbParser,
     }
 
     AGGREGATORS = {
-        'ab': AbAggregator
+        'ab': AbAggregator,
     }
 
     CLASS_LOGGER = loggers.ClassLogger()
