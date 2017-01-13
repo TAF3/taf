@@ -161,7 +161,7 @@ class Collectd(object):
         self.send_command = cli_send_command
         self.cli_set_command = cli_set_command
         self.collectd_conf = collectd_conf if collectd_conf else self.DEFAULT_COLLECTD_CONF
-        self.service_manager = service_lib.specific_service_manager_factory(self.SERVICE, self.send_command)
+        self.service_manager = service_lib.SpecificServiceManager(self.SERVICE, self.send_command)
 
         for action in ACTIONS:
             setattr(self, action, collectd_conf_action(action, self.cli_set_command, self.collectd_conf))

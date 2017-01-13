@@ -29,7 +29,7 @@ systemd_cmd_gen = service_lib.systemd_command_generator()
 cmd = " ".join(systemd_cmd_gen.start("networkd"))
 
 # to directly call cli_send_command but still accepts kwargs for cli_send_command
-networkd = service_lib.specific_service_manager_factory("networkd", self.cli_send_command)
+networkd = service_lib.SpecificServiceManager("networkd", self.cli_send_command)
 networkd.stop(expected_rcs={0, 3})
 networkd.start(expected_rcs={1})
 
@@ -184,10 +184,14 @@ class ServiceCommandGenerator(object):
 
 
 class GenericServiceManager(object):
-    def __init__(self, service_command_generator, run_func):
+    def __init__(self, run_func):
         super().__init__()
-        self.service_command_generator = service_command_generator
-        self.return_codes = service_command_generator.return_codes
+        command_list = [c for c in COMMANDS if c != "list"]
+        self.service_command_generator = ServiceCommandGenerator(systemd_command_generator,
+                                                                 SystemdReturnCodes,
+                                                                 command_list)
+
+        self.return_codes = SystemdReturnCodes
         self.run_func = run_func
 
     def __getattr__(self, name):
@@ -211,8 +215,8 @@ class GenericServiceManager(object):
 
 
 class SpecificServiceManager(GenericServiceManager):
-    def __init__(self, service_name, service_command_generator, run_func):
-        super().__init__(service_command_generator, run_func)
+    def __init__(self, service_name, run_func):
+        super().__init__(run_func)
         self.service_name = service_name
 
     def __getattr__(self, name):
@@ -227,8 +231,8 @@ class SpecificServiceManager(GenericServiceManager):
 
 class SystemdServiceManager(GenericServiceManager):
 
-    def __init__(self, service_command_generator, run):
-        super(SystemdServiceManager, self).__init__(service_command_generator, run)
+    def __init__(self, run):
+        super().__init__(run)
 
     @staticmethod
     def change_default_runlevel(runlevel='multi-user.target'):
@@ -245,18 +249,8 @@ _service_managers = {"systemd": SystemdServiceManager}
 _return_codes = {"systemd": SystemdReturnCodes}
 
 
-def specific_service_manager_factory(service_name, run_func):
-    command_list = [c for c in COMMANDS if c != "list"]
-    service_command_generator = ServiceCommandGenerator(systemd_command_generator,
-                                                        SystemdReturnCodes,
-                                                        command_list)
-    return SpecificServiceManager(service_name, service_command_generator, run_func)
-
-
 def systemd_manager_factory(run_func):
-    return SystemdServiceManager(ServiceCommandGenerator(systemd_command_generator,
-                                                         SystemdReturnCodes),
-                                 run_func)
+    return SystemdServiceManager(run_func)
 
 
 class ServiceConfigChangeContext(object):
