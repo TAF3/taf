@@ -1,5 +1,5 @@
 """
-@copyright Copyright (c) 2016, Intel Corporation.
+@copyright Copyright (c) 2016 - 2017, Intel Corporation.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -135,13 +135,13 @@ class OpenvSwitch(object):
         @param  kwargs:  interface options
         @type  kwargs:  dict
         """
-        # options available
-        options = ''.join(map(lambda x: ' options:{}={}'.format(*x), kwargs.items()))
         base_cmd = 'ovs-vsctl add-port {0} {1}'.format(br_name, iface_name)
-        extd_cmd = ' -- set interface type={0}'.format(iface_type) if iface_type else ''
-        extd_cmd = ' -- set interface type={0}{1}'.format(iface_type, options) if iface_type and kwargs else ''
-        
-        self.cli_send_command(base_cmd + extd_cmd)
+        if_type = ' type={0}'.format(iface_type) if iface_type else ''
+        options = ''.join(map(lambda x: ' options:{}={}'.format(*x), kwargs.items()))
+        # Apply external command to ovs if interface type or options are given
+        extd_cmd = ' -- set interface {0}{1}{2}'.format(iface_name, if_type, options) if iface_type or kwargs else ''
+
+        self.cli_send_command(''.join([base_cmd, extd_cmd]))
         self.update_map(iface_name)
 
     def del_interface(self, br_name, iface_name):
@@ -240,16 +240,3 @@ class OpenvSwitch(object):
         options = ''.join(map(lambda x: ' {}={}'.format(*x), kwargs.items()))
         command = "ovs-vsctl set {0} {1}{2}".format(inst_type, name, options)
         self.cli_send_command(command)
-
-    def get_interface_statistic_counter(self, iface_name, counter_name):
-        """
-        @brief  Get ovs interface statistic from ovsdb
-        @param  iface_name:  name of ovs interface
-        @type  iface_name:  str
-        @param  counter_name:  name of ovs interface counter
-        @type  counter_name:  str
-        @rtype:  dict
-        @return:  Output of OVS interface statistics
-        """
-        output = self.cli_send_command("ovs-vsctl get Interface {0} statistics:{1}".format(iface_name, counter_name))
-        return int(output.stdout.strip())
