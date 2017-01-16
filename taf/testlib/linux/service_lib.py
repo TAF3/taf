@@ -184,9 +184,10 @@ class ServiceCommandGenerator(object):
 
 
 class GenericServiceManager(object):
-    def __init__(self, run_func):
+    def __init__(self, run_func, command_list=None):
         super().__init__()
-        command_list = [c for c in COMMANDS if c != "list"]
+        if command_list is None:
+            command_list = COMMANDS
         self.service_command_generator = ServiceCommandGenerator(systemd_command_generator,
                                                                  SystemdReturnCodes,
                                                                  command_list)
@@ -216,7 +217,8 @@ class GenericServiceManager(object):
 
 class SpecificServiceManager(GenericServiceManager):
     def __init__(self, service_name, run_func):
-        super().__init__(run_func)
+        command_list = [c for c in COMMANDS if c != "list"]
+        super().__init__(run_func, command_list)
         self.service_name = service_name
 
     def __getattr__(self, name):
@@ -240,17 +242,6 @@ class SystemdServiceManager(GenericServiceManager):
         tmp_symlink = mktemp(dir="/etc/systemd/system")
         os.symlink("/usr/lib/systemd/system/{}".format(runlevel), tmp_symlink)
         os.rename(tmp_symlink, "/etc/systemd/system/default.target")
-
-
-_command_generators = {"systemd": systemd_command_generator}
-
-_service_managers = {"systemd": SystemdServiceManager}
-
-_return_codes = {"systemd": SystemdReturnCodes}
-
-
-def systemd_manager_factory(run_func):
-    return SystemdServiceManager(run_func)
 
 
 class ServiceConfigChangeContext(object):

@@ -30,11 +30,9 @@ class TestSystemd(unittest.TestCase):
 
     def setUp(self):
         self.service_name = "fake_service"
-        init_name = "systemd"
-        command_generator = service_lib._command_generators[init_name]
-        return_codes = service_lib._return_codes[init_name]
+        return_codes = service_lib.SystemdReturnCodes
         self.service_command_generator = service_lib.ServiceCommandGenerator(
-            command_generator,
+            service_lib.systemd_command_generator,
             return_codes
         )
 
@@ -50,14 +48,7 @@ class TestSpecificServiceManager(unittest.TestCase):
 
     def setUp(self):
         self.run_mock = MagicMock()
-        self.init_name = "systemd"
-        command_generator = service_lib.systemd_command_generator
-        return_codes = service_lib.SystemdReturnCodes
-        command_list = [c for c in service_lib.COMMANDS if c != "list"]
-        service_command_generator = service_lib.ServiceCommandGenerator(
-            command_generator, return_codes, command_list)
-        self.service_manager = service_lib.SpecificServiceManager("lldpad",
-                                                                  self.run_mock)
+        self.service_manager = service_lib.SpecificServiceManager("lldpad", self.run_mock)
 
     def test_start(self):
         service = "lldpad"
@@ -72,7 +63,7 @@ class TestSpecificServiceManager(unittest.TestCase):
                    0] == "systemctl stop %s.service" % service
         assert self.run_mock.call_args[1] == {'ignore_status': True}
 
-    def test_list_is_not_present_in_SpecifcServiceManager(self):
+    def test_list_is_not_present_in_SpecificServiceManager(self):
         assert not hasattr(self.service_manager, "list")
 
 
@@ -80,14 +71,7 @@ class TestSystemdServiceManager(unittest.TestCase):
 
     def setUp(self):
         self.run_mock = MagicMock()
-        self.init_name = "systemd"
-        command_generator = service_lib.systemd_command_generator
-        return_codes = service_lib.SystemdReturnCodes
-        service_manager = service_lib.SystemdServiceManager
-        service_command_generator = service_lib.ServiceCommandGenerator(
-            command_generator, return_codes)
-        self.service_manager = service_manager(
-            service_command_generator, self.run_mock)
+        self.service_manager = service_lib.SystemdServiceManager(self.run_mock)
 
     def test_start(self):
         service = "lldpad"
