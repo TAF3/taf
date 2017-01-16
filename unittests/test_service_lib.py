@@ -57,7 +57,6 @@ class TestSpecificServiceManager(unittest.TestCase):
         service_command_generator = service_lib.ServiceCommandGenerator(
             command_generator, return_codes, command_list)
         self.service_manager = service_lib.SpecificServiceManager("lldpad",
-                                                                  service_command_generator,
                                                                   self.run_mock)
 
     def test_start(self):
