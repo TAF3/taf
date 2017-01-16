@@ -123,7 +123,7 @@ class OpenvSwitch(object):
         self.cli_send_command(command="ovs-vsctl del-br {}".format(br_name))
         self.update_map(br_name, delete=True)
 
-    def add_interface(self, br_name, iface_name, iface_type, **kwargs):
+    def add_interface(self, br_name, iface_name, iface_type='', **kwargs):
         """
         @brief  Add new openvswitch interface
         @param  br_name:  name of ovs bridge
