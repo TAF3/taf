@@ -31,9 +31,29 @@ from utils.ab_parser import AbParser, AbAggregator  # pylint: disable=no-name-in
 
 from testlib.linux.kubernetes import Kubernetes
 
+LABEL_REMOTE_CLIENT = 'remote-cl'
+LABEL_REMOTE_SERVER = 'remote-srv'
+LABEL_LOCAL_CLIENT = 'local-cl'
+LABEL_LOCAL_SERVER = 'local-srv'
+LABEL_SINGLE_VM = 'single-vm'
+
+BENCH_LABELS = [
+    LABEL_REMOTE_SERVER,
+    LABEL_REMOTE_CLIENT,
+    LABEL_LOCAL_SERVER,
+    LABEL_LOCAL_CLIENT,
+    LABEL_SINGLE_VM,
+]
+
 
 class BenchmarkException(Exception):
     pass
+
+
+def set_node_selector(cfg, selector):
+    cfg['spec']['nodeSelector'] = {
+        selector: 'true',
+    }
 
 
 class Config(object):
@@ -83,10 +103,26 @@ class Config(object):
             raise AttributeError
         self._config = ChainMap(config, self._ATTRIBUTES)
 
-    def __init__(self, config=None):
+    def set_labels(self, mode):
+        if mode == 'single-vm':
+            set_node_selector(self.kubeserverfile, LABEL_SINGLE_VM)
+            set_node_selector(self.kubeclientfile, LABEL_SINGLE_VM)
+        elif mode == 'local':
+            set_node_selector(self.kubeserverfile, LABEL_LOCAL_SERVER)
+            set_node_selector(self.kubeclientfile, LABEL_LOCAL_CLIENT)
+        elif mode == 'remote':
+            set_node_selector(self.kubeserverfile, LABEL_REMOTE_SERVER)
+            set_node_selector(self.kubeclientfile, LABEL_REMOTE_CLIENT)
+        else:
+            raise Exception('Incorrect benchmark mode')
+
+    def __init__(self, config=None, master_ip=None):
         super().__init__()
         self._config = {}
         self.load(config)
+        if master_ip is not None:
+            self.k8s_endpoint = self.k8s_endpoint.format(master_ip=k8s_master_ip)
+            self.etcd_endpoint = self.etcd_endpoint.format(master_ip=k8s_master_ip)
 
 
 class Test(ABC):
