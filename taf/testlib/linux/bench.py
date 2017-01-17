@@ -60,16 +60,16 @@ class Config(object):
 
     _ATTRIBUTES = {
         'debug': False,               # Additional debug messages TODO: seems it's unused
-        'k8s_endpoint': None,         # Kubernetes endpoint for the KubernetesBenchmark
+        'kubernetes_endpoint': None,         # Kubernetes endpoint for the KubernetesBenchmark
         'etcd_endpoint': None,        # Etcd endpoint
         'docker_registry': None,      # Registry where to pull the onp_benchmark image from
         'create': None,               # Should the pods be created or not TODO: taken from the original
                                       #     Shannon implementation, but I don't see a point here
         'numpairs': 1,                # number of client-server pairs
-        'perfserverfile': None,       # json file defining the server and its parameters
-        'perfclientfile': None,       # json file defining the client and its parameters
-        'kubeserverfile': None,       # kubernetes json file defining the server
-        'kubeclientfile': None,       # kubernetes json file defining the client
+        'perf_server_file': None,     # json file defining the server and its parameters
+        'perf_client_file': None,     # json file defining the client and its parameters
+        'kube_server_file': None,     # kubernetes json file defining the server
+        'kube_client_file': None,     # kubernetes json file defining the client
         'env': None,                  # environment -- information about VMs for the vm-vm test
         'test_type': None,            # VM-2-VM or Kubernetes test
         'remote': None,               # clients on different hosts than servers
@@ -104,15 +104,15 @@ class Config(object):
         self._config = ChainMap(config, self._ATTRIBUTES)
 
     def set_labels(self, mode):
-        if mode == 'single-vm':
-            set_node_selector(self.kubeserverfile, LABEL_SINGLE_VM)
-            set_node_selector(self.kubeclientfile, LABEL_SINGLE_VM)
+        if mode == 'single_vm':
+            set_node_selector(self.kube_server_file, LABEL_SINGLE_VM)
+            set_node_selector(self.kube_client_file, LABEL_SINGLE_VM)
         elif mode == 'local':
-            set_node_selector(self.kubeserverfile, LABEL_LOCAL_SERVER)
-            set_node_selector(self.kubeclientfile, LABEL_LOCAL_CLIENT)
+            set_node_selector(self.kube_server_file, LABEL_LOCAL_SERVER)
+            set_node_selector(self.kube_client_file, LABEL_LOCAL_CLIENT)
         elif mode == 'remote':
-            set_node_selector(self.kubeserverfile, LABEL_REMOTE_SERVER)
-            set_node_selector(self.kubeclientfile, LABEL_REMOTE_CLIENT)
+            set_node_selector(self.kube_server_file, LABEL_REMOTE_SERVER)
+            set_node_selector(self.kube_client_file, LABEL_REMOTE_CLIENT)
         else:
             raise Exception('Incorrect benchmark mode')
 
@@ -121,8 +121,8 @@ class Config(object):
         self._config = {}
         self.load(config)
         if master_ip is not None:
-            self.k8s_endpoint = self.k8s_endpoint.format(master_ip=k8s_master_ip)
-            self.etcd_endpoint = self.etcd_endpoint.format(master_ip=k8s_master_ip)
+            self.kubernetes_endpoint = self.kubernetes_endpoint.format(master_ip=master_ip)
+            self.etcd_endpoint = self.etcd_endpoint.format(master_ip=master_ip)
 
 
 class Test(ABC):
@@ -177,8 +177,8 @@ class Test(ABC):
         self.etcd.rootvalue__latest = self.id
         self.etcd.rootvalue__numpairs = self.config.numpairs
 
-        self.etcd.value__inputdata__server = json.dumps(self.config.perfserverfile)
-        self.etcd.value__inputdata__client = json.dumps(self.config.perfclientfile)
+        self.etcd.value__inputdata__server = json.dumps(self.config.perf_server_file)
+        self.etcd.value__inputdata__client = json.dumps(self.config.perf_client_file)
         self.etcd.value__inputdata__start = "0"
         time.sleep(1)
 
@@ -252,14 +252,14 @@ class KubernetesBenchmark(Test):
 
         with TimerContext(log_time):
             self.CLASS_LOGGER.info("Cleaning pods...")
-            self.k8s_client.deletecollection_namespaced_pod(namespace='default')
+            self.kubernetes_client.deletecollection_namespaced_pod(namespace='default')
             # TODO: timeout
-            while self.k8s_client.helper.number_of_pods > 0:
+            while self.kubernetes_client.helper.number_of_pods > 0:
                 time.sleep(1)
 
     def __init__(self, config):
         super().__init__(config)
-        self.k8s_client = Kubernetes(self.config.k8s_endpoint)
+        self.kubernetes_client = Kubernetes(self.config.kubernetes_endpoint)
         self.clean_up()
         self.fmt_obj = {
             'etcd_ip': self.etcd.etcd_config['host'],
@@ -268,7 +268,7 @@ class KubernetesBenchmark(Test):
         }
 
     def _start_pod(self, body):
-        self.k8s_client.create_namespaced_pod(
+        self.kubernetes_client.create_namespaced_pod(
             body=body,
             namespace='default')
 
@@ -284,7 +284,7 @@ class KubernetesBenchmark(Test):
             time.sleep(0.25)
 
     def _start_servers(self):
-        self._start_entity("server", self.config.kubeserverfile)
+        self._start_entity("server", self.config.kube_server_file)
 
     def _start_clients(self):
-        self._start_entity("client", self.config.kubeclientfile)
+        self._start_entity("client", self.config.kube_client_file)

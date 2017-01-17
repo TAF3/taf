@@ -1325,6 +1325,13 @@ class VirtualEnv(object):
 
         return res
 
+    def get_services(self, service_filter=None):
+        client = self.handle.admin_manager.services_client
+        services = client.list_services()['services']
+        if service_filter is None:
+            return services
+        return filter(service_filter, services)  # pylint: disable=bad-builtin
+
     def enable_service(self, service):
         client = self.handle.admin_manager.services_client
         client.enable_service(host=service['host'], binary=service['binary'])
