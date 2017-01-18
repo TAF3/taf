@@ -96,6 +96,7 @@ class SutMonitor(object):
         @param env:  TAF environment instance
         @type  env:  testlib.common3.Environment
         """
+        super().__init__()
         self.env = env
         # Initialize start and stop time values
         self.start_time = time.time()

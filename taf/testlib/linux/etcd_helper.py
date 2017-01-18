@@ -85,17 +85,14 @@ class EtcdHelper(object):
 
     @property
     def latest_id(self):
-        try:
+        with suppress(AttributeError):
             return self._latest_id
-        except AttributeError:
-            for _ in range(2):
-                try:
-                    self._latest_id = int(self.etcd.read(self._latest_id_key).value)  # pylint: disable=no-member
-                    return self._latest_id
-                except etcd.EtcdKeyNotFound:
-                    self.init_etcd()
-                except:
-                    raise EtcdHelperException("Failed to find test_id")
+        for _ in range(2):
+            with suppress(etcd.EtcdKeyNotFound):
+                self._latest_id = int(self.etcd.read(self._latest_id_key).value)  # pylint: disable=no-member
+                return self._latest_id
+            self.init_etcd()
+        raise EtcdHelperException("Failed to find test_id")
 
     # TODO: rewrite using conditional loops once they are merged
     def _wait_for(self, iterator, timeout):

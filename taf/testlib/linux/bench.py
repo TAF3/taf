@@ -31,19 +31,46 @@ from utils.ab_parser import AbParser, AbAggregator  # pylint: disable=no-name-in
 
 from testlib.linux.kubernetes import Kubernetes
 
-LABEL_REMOTE_CLIENT = 'remote-cl'
-LABEL_REMOTE_SERVER = 'remote-srv'
-LABEL_LOCAL_CLIENT = 'local-cl'
-LABEL_LOCAL_SERVER = 'local-srv'
-LABEL_SINGLE_VM = 'single-vm'
 
-BENCH_LABELS = [
-    LABEL_REMOTE_SERVER,
-    LABEL_REMOTE_CLIENT,
-    LABEL_LOCAL_SERVER,
-    LABEL_LOCAL_CLIENT,
-    LABEL_SINGLE_VM,
-]
+class IterableMetaclass(type):
+    def __iter__(cls):
+        for key, value in cls.__dict__.items():
+            if not key.startswith('__'):
+                yield value
+
+
+class Constants(metaclass=IterableMetaclass):
+    pass
+
+
+class Labels(Constants):
+    REMOTE_SERVER = 'remote-srv'
+    REMOTE_CLIENT = 'remote-cl'
+    LOCAL_SERVER = 'local-srv'
+    LOCAL_CLIENT = 'local-cl'
+    SINGLE_VM = 'single-vm'
+
+
+class Modes(Constants):
+    SINGLE_VM = 'single_vm'
+    LOCAL = 'local'
+    REMOTE = 'remote'
+
+
+MODE_MAPPING = {
+    Modes.SINGLE_VM: {
+        'client': Labels.SINGLE_VM,
+        'server': Labels.SINGLE_VM,
+    },
+    Modes.LOCAL: {
+        'client': Labels.LOCAL_CLIENT,
+        'server': Labels.LOCAL_SERVER,
+    },
+    Modes.REMOTE: {
+        'client': Labels.REMOTE_CLIENT,
+        'server': Labels.REMOTE_SERVER,
+    },
+}
 
 
 class BenchmarkException(Exception):
@@ -85,10 +112,9 @@ class Config(object):
     CLASS_LOGGER = loggers.ClassLogger()
 
     def __getattr__(self, key):
-        try:
+        with suppress(KeyError):
             return self._config[key]
-        except KeyError:
-            raise AttributeError
+        raise AttributeError(key)
 
     def __setattr__(self, key, value=None):
         if key == '_config':
@@ -104,17 +130,9 @@ class Config(object):
         self._config = ChainMap(config, self._ATTRIBUTES)
 
     def set_labels(self, mode):
-        if mode == 'single_vm':
-            set_node_selector(self.kube_server_file, LABEL_SINGLE_VM)
-            set_node_selector(self.kube_client_file, LABEL_SINGLE_VM)
-        elif mode == 'local':
-            set_node_selector(self.kube_server_file, LABEL_LOCAL_SERVER)
-            set_node_selector(self.kube_client_file, LABEL_LOCAL_CLIENT)
-        elif mode == 'remote':
-            set_node_selector(self.kube_server_file, LABEL_REMOTE_SERVER)
-            set_node_selector(self.kube_client_file, LABEL_REMOTE_CLIENT)
-        else:
-            raise Exception('Incorrect benchmark mode')
+        mapping = MODE_MAPPING[mode]
+        set_node_selector(self.kube_server_file, mapping['server'])
+        set_node_selector(self.kube_client_file, mapping['client'])
 
     def __init__(self, config=None, master_ip=None):
         super().__init__()
@@ -212,23 +230,23 @@ class Test(ABC):
 
     @property
     def test_type(self):
-        if self._test_type is None:
-            client_file = self.etcd.value__inputdata__client
-            client_file = json.loads(client_file.value)  # pylint: disable=no-member
-            for test_type in self.PARSERS:
-                with suppress(KeyError):
-                    client_file[test_type]  # pylint: disable=W0104
-                    self._test_type = test_type
-                    return self._test_type
-            raise BenchmarkException('Unknown test type')
-        return self._test_type
+        if self._test_type is not None:
+            return self._test_type
+        client_file = self.etcd.value__inputdata__client
+        client_file = json.loads(client_file.value)  # pylint: disable=no-member
+        for test_type in self.PARSERS:
+            with suppress(KeyError):
+                client_file[test_type]  # pylint: disable=W0104
+                self._test_type = test_type
+                return self._test_type
+            raise BenchmarkException('{}: Unknown test type'.format(test_type))
 
     def collect(self):
         try:
             parser_type = self.PARSERS[self.test_type]
             aggregate_type = self.AGGREGATORS[self.test_type]
         except KeyError:
-            raise BenchmarkException('Unknown test type')
+            raise BenchmarkException('{}: Unknown test type'.format(self.test_type))
         else:
             parser = parser_type()
             aggregator = aggregate_type()

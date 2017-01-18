@@ -210,7 +210,7 @@ DISPLAY = {
     'DISK': [
         LineDef(FILES['DISK'][0].vname, CDEF[2], True, False, 'Read\:'),
         LineDef(FILES['DISK'][1].vname, CDEF[2], True, False, 'Written\:'),
-    ]
+    ],
 }
 
 
@@ -218,7 +218,7 @@ VARS = [
     Variable('MINIMUM', 'Min',),
     Variable('AVERAGE', 'Avg,'),
     Variable('MAXIMUM', 'Max,'),
-    Variable('LAST', 'Last\l')
+    Variable('LAST', 'Last\l'),
 ]
 
 
@@ -236,7 +236,7 @@ PRINTS = {
         Print([(FILES['CPU'][2].vname, CDEF[0], VARS[0]),
                (FILES['CPU'][2].vname, CDEF[1], VARS[1]),
                (FILES['CPU'][2].vname, CDEF[2], VARS[2]),
-               (FILES['CPU'][2].vname, CDEF[1], VARS[3])], '%8.1lf {}')
+               (FILES['CPU'][2].vname, CDEF[1], VARS[3])], '%8.1lf {}'),
     ],
     'MEMORY': [
         Print([(FILES['MEMORY'][3].vname, CDEF[0], VARS[0]),
@@ -254,7 +254,7 @@ PRINTS = {
         Print([(FILES['MEMORY'][0].vname, CDEF[0], VARS[0]),
                (FILES['MEMORY'][0].vname, CDEF[1], VARS[1]),
                (FILES['MEMORY'][0].vname, CDEF[2], VARS[2]),
-               (FILES['MEMORY'][0].vname, CDEF[1], VARS[3])], '%8.1lf%S {}')
+               (FILES['MEMORY'][0].vname, CDEF[1], VARS[3])], '%8.1lf%S {}'),
     ],
     # For bits/sec representation
     'INTERFACE': [
@@ -265,7 +265,7 @@ PRINTS = {
         Print([(CALCULATIONS['INTERFACE'][3].vname, None, VARS[0]),
                (CALCULATIONS['INTERFACE'][4].vname, None, VARS[1]),
                (CALCULATIONS['INTERFACE'][5].vname, None, VARS[2]),
-               (CALCULATIONS['INTERFACE'][4].vname, None, VARS[3])], '%8.1lf%S {}')
+               (CALCULATIONS['INTERFACE'][4].vname, None, VARS[3])], '%8.1lf%S {}'),
     ],
     # For bytes/sec representation
     'INTERFACE_BYTES': [
@@ -276,7 +276,7 @@ PRINTS = {
         Print([(FILES['INTERFACE_BYTES'][1].vname, CDEF[0], VARS[0]),
                (FILES['INTERFACE_BYTES'][1].vname, CDEF[1], VARS[1]),
                (FILES['INTERFACE_BYTES'][1].vname, CDEF[2], VARS[2]),
-               (FILES['INTERFACE_BYTES'][1].vname, CDEF[1], VARS[3])], '%8.1lf%S {}')
+               (FILES['INTERFACE_BYTES'][1].vname, CDEF[1], VARS[3])], '%8.1lf%S {}'),
     ],
     'LOAD': [
         Print([(FILES['LOAD'][0].vname, CDEF[0], VARS[0]),
@@ -300,8 +300,8 @@ PRINTS = {
         Print([(FILES['DISK'][1].vname, CDEF[0], VARS[0]),
                (FILES['DISK'][1].vname, CDEF[1], VARS[1]),
                (FILES['DISK'][1].vname, CDEF[2], VARS[2]),
-               (FILES['DISK'][1].vname, CDEF[1], VARS[3])], '%8.1lf%S {}')
-    ]
+               (FILES['DISK'][1].vname, CDEF[1], VARS[3])], '%8.1lf%S {}'),
+    ],
 }
 
 
@@ -313,7 +313,7 @@ XGRID = [
     XGrid(901, 3600, 'MINUTE:5:MINUTE:20:MINUTE:10:0:%R'),
     XGrid(3601, 18000, 'MINUTE:10:HOUR:1:MINUTE:30:0:%R'),
     XGrid(18001, 172800, 'MINUTE:30:HOUR:2:MINUTE:120:0:%R'),
-    XGrid(172801, None, 'HOUR:2:HOUR:8:HOUR:8:0:%R')
+    XGrid(172801, None, 'HOUR:2:HOUR:8:HOUR:8:0:%R'),
 ]
 
 
