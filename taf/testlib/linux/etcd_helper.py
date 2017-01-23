@@ -110,6 +110,6 @@ class EtcdHelper(object):
                 return len(list(self.read_list(key)))
             return 0
 
-        self.CLASS_LOGGER.debug('waiting for %s to give %d', key, count)
+        self.CLASS_LOGGER.info('Waiting for %s to give %d. Timeout is %d.', key, count, timeout)
         self._wait_for(iter(get_key_count, count), timeout)
         self.CLASS_LOGGER.debug('%s gave %d', key, count)

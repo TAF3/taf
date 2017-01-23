@@ -17,7 +17,26 @@ limitations under the License.
 
 @summary  Support for magnum feature of Openstack. Uses magnum tempest client
           that was taken form the upstream magnum repository
+
+When using magnum clients, the environment.json file should contain some additional entries:
+
 """
+###############################################################################
+# Requires the following fiels in environment json in addition to what's needed
+# for the virtual_env:
+# {
+#   ...
+#   "dns_nameserver": "10.248.2.1",
+#   "http_proxy": "http://proxy.example.com"
+#   "https_proxy": "https://proxy.example.com"
+#   "no_proxy": "10.0.0.1,10.0.0.2"
+#   "insecure_registry": "20.0.0.1:4000"
+#   "ntp_server": "ntp.example.com",
+#   ...
+# }
+#
+###############################################################################
+
 from testlib.tempest_clients.magnum.clients.cluster_client import ClusterClient
 from testlib.tempest_clients.magnum.clients.cluster_template_client import ClusterTemplateClient
 from testlib.tempest_clients.magnum.clients.magnum_service_client import MagnumServiceClient

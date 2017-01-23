@@ -202,7 +202,7 @@ class Test(ABC):
 
         def log_time(context):
             self.CLASS_LOGGER.info(
-                "Time to create {0.thing} was {0.delta:4.2} seconds".format(context))
+                "Time to create {0.thing} was {0.delta} seconds".format(context))
 
         timer = TimerContext(log_time)
 
@@ -234,12 +234,10 @@ class Test(ABC):
             return self._test_type
         client_file = self.etcd.value__inputdata__client
         client_file = json.loads(client_file.value)  # pylint: disable=no-member
-        for test_type in self.PARSERS:
-            with suppress(KeyError):
-                client_file[test_type]  # pylint: disable=W0104
-                self._test_type = test_type
-                return self._test_type
-            raise BenchmarkException('{}: Unknown test type'.format(test_type))
+        self._test_type, *_ = client_file
+        if self._test_type in self.PARSERS:
+            return self._test_type
+        raise BenchmarkException('{}: Unknown test type'.format(self._test_type))
 
     def collect(self):
         try:
