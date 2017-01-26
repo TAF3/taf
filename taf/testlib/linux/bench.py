@@ -30,6 +30,7 @@ from testlib.linux.utils import TimerContext, create_directory, recursive_format
 from utils.ab_parser import AbParser, AbAggregator  # pylint: disable=no-name-in-module
 
 from testlib.linux.kubernetes import Kubernetes
+from testlib.linux.utils import wait_for
 
 
 class IterableMetaclass(type):
@@ -234,10 +235,10 @@ class Test(ABC):
             return self._test_type
         client_file = self.etcd.value__inputdata__client
         client_file = json.loads(client_file.value)  # pylint: disable=no-member
-        self._test_type, *_ = client_file
-        if self._test_type in self.PARSERS:
-            return self._test_type
-        raise BenchmarkException('{}: Unknown test type'.format(self._test_type))
+        self._test_type = next(iter(client_file))
+        if self._test_type not in self.PARSERS:
+            raise BenchmarkException('{}: Unknown test type'.format(self._test_type))
+        return self._test_type
 
     def collect(self):
         try:
@@ -266,12 +267,10 @@ class KubernetesBenchmark(Test):
         def log_time(context):
             self.CLASS_LOGGER.debug("Cleaning took %d seconds", context.delta)
 
+        self.CLASS_LOGGER.info("Cleaning pods...")
         with TimerContext(log_time):
-            self.CLASS_LOGGER.info("Cleaning pods...")
             self.kubernetes_client.deletecollection_namespaced_pod(namespace='default')
-            # TODO: timeout
-            while self.kubernetes_client.helper.number_of_pods > 0:
-                time.sleep(1)
+            wait_for(iter(self.kubernetes_client.helper.get_number_of_pods, 0), timeout=300)
 
     def __init__(self, config):
         super().__init__(config)

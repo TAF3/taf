@@ -30,13 +30,7 @@ class KubernetesHelper(object):
         return self.kubernetes.api.patch_namespaced_node(body={'metadata': {'labels': labels}},
                                                          name=name)
 
-    @property
-    def number_of_replication_controllers(self):
-        return len(self.kubernetes.api.list_namespaced_replication_controller(
-                   namespace='default').items)
-
-    @property
-    def number_of_pods(self):
+    def get_number_of_pods(self):
         return len(self.kubernetes.api.list_namespaced_pod(
                    namespace='default').items)
 

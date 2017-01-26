@@ -61,3 +61,14 @@ def recursive_format(container, kwargs):
                 for k, v in container.items()}
 
     return container
+
+
+class TimeoutExceeded(Exception):
+    pass
+
+
+def wait_for(iterator, timeout):
+    for index in iterator:
+        if index > timeout:
+            raise TimeoutExceeded
+        time.sleep(1)

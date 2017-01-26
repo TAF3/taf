@@ -22,6 +22,7 @@ import time
 
 import etcd
 from plugins import loggers
+from testlib.linux.utils import wait_for
 
 
 ROOT_KEY = '/intel.com/tests'
@@ -94,12 +95,6 @@ class EtcdHelper(object):
             self.init_etcd()
         raise EtcdHelperException("Failed to find test_id")
 
-    # TODO: rewrite using conditional loops once they are merged
-    def _wait_for(self, iterator, timeout):
-        for index in iterator:
-            if index > timeout:
-                raise EtcdHelperException("Timeout.")
-            time.sleep(1)
 
     def read_list(self, key):
         return self.etcd.read(key).leaves
@@ -111,5 +106,5 @@ class EtcdHelper(object):
             return 0
 
         self.CLASS_LOGGER.info('Waiting for %s to give %d. Timeout is %d.', key, count, timeout)
-        self._wait_for(iter(get_key_count, count), timeout)
+        wait_for(iter(get_key_count, count), timeout)
         self.CLASS_LOGGER.debug('%s gave %d', key, count)
