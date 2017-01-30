@@ -40,6 +40,7 @@ import json
 import pprint
 import itertools
 from functools import wraps
+import traceback
 
 import netaddr
 import pytest
@@ -103,12 +104,12 @@ class VirtualEnv(object):
 
     OVS_FLAVOR_SPEC = merge_dicts(
         _DEFAULT_FLAVOR_SPEC,
-        {'name': 'venv-ovs-flavor'}
+        {'name': 'venv-ovs-flavor'},
     )
     DPDK_FLAVOR_SPEC = merge_dicts(
         _DEFAULT_FLAVOR_SPEC,
         DPDK_EXTRA_SPECS,
-        {'name': 'venv-dpdk-flavor'}
+        {'name': 'venv-dpdk-flavor'},
     )
 
     # Example: my_vIPS_image-fedora-bare.qcow2
@@ -168,7 +169,7 @@ class VirtualEnv(object):
             'try_reuse': self.reuse_venv,
             'name': self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-net'),
             'tenant_id': self.tenant_id,
-            'create_external_router': external_router
+            'create_external_router': external_router,
         }
         assert self.ensure_public_access(**public_access_kwargs)
 
@@ -249,7 +250,7 @@ class VirtualEnv(object):
                 build_timeout=self.config.network.build_timeout,
                 **self.handle.admin_manager.default_params)
         except Exception:
-            self.class_logger.warning('Could not create sfc client!')
+            self.class_logger.exception('Could not create sfc client!')
 
     def _add_magnum_clients(self):
         from .magnum import Magnum
@@ -353,7 +354,7 @@ class VirtualEnv(object):
             'networks_client': networks_client,
             'delete_external': True,
             'name': name,
-            'tenant_id': tenant_id
+            'tenant_id': tenant_id,
         }
         public_network = self.create_public_network(**public_network_kwargs)
         assert public_network
@@ -370,7 +371,7 @@ class VirtualEnv(object):
                 'start': '{}.100'.format(allocation_prefix),
                 'end': '{}.254'.format(allocation_prefix)}],
             'gateway_ip': net_ip.ip,
-            'enable_dhcp': False
+            'enable_dhcp': False,
         }
         self._create_subnet(public_network['id'], **subnet_kwargs)
 
@@ -381,7 +382,7 @@ class VirtualEnv(object):
                 'routers_client': routers_client,
                 'network_id': _net_cfg.public_network_id,
                 'tenant_id': tenant_id,
-                'enable_snat': True
+                'enable_snat': True,
             }
             public_router = self.create_router(**router_kwargs)
             assert public_router
@@ -478,8 +479,8 @@ class VirtualEnv(object):
             {
                 'name': name,
                 'tenant_id': tenant_id,
-                'external_gateway_info': ext_gw_info
-            }
+                'external_gateway_info': ext_gw_info,
+            },
         )
 
         router_resp = routers_client.create_router(**router_kwargs)
@@ -508,7 +509,7 @@ class VirtualEnv(object):
 
         clients = {
             'routers_client': routers_client,
-            'ports_client': ports_client
+            'ports_client': ports_client,
         }
 
         self._remove_router_interfaces(router_id, **clients)
@@ -567,13 +568,13 @@ class VirtualEnv(object):
             kwargs,
             {
                 'name': name,
-                'tenant_id': tenant_id
-            }
+                'tenant_id': tenant_id,
+            },
         )
         subnet_kwargs = {
             'name': self.tempest_lib.common.utils.data_utils.rand_name('tempest-subnet'),
             'tenant_id': tenant_id,
-            'enable_dhcp': True
+            'enable_dhcp': True,
         }
 
         subnet = None
@@ -606,8 +607,8 @@ class VirtualEnv(object):
             {
                 'name': name,
                 'tenant_id': tenant_id,
-                'network_id': network_id
-            }
+                'network_id': network_id,
+            },
         )
 
         port = ports_client.create_port(**port_kwargs)['port']
@@ -645,7 +646,7 @@ class VirtualEnv(object):
             del_external_kwargs = {
                 'routers_client': routers_client,
                 'networks_client': networks_client,
-                'ports_client': ports_client
+                'ports_client': ports_client,
             }
             self._delete_external_elements(**del_external_kwargs)
 
@@ -678,7 +679,7 @@ class VirtualEnv(object):
             {
                 'name': name,
                 'tenant_id': tenant_id,
-            }
+            },
         )
         network_resp = networks_client.create_network(**network_kwargs)
         network = network_resp['network']
@@ -754,7 +755,7 @@ class VirtualEnv(object):
                 if hosts:
                     pool = {
                         'start': hosts[0],
-                        'end': hosts[-1]
+                        'end': hosts[-1],
                     }
                     allocation_pools.update({'allocation_pools': [pool]})
 
@@ -767,7 +768,7 @@ class VirtualEnv(object):
                     'name': name,
                     'tenant_id': tenant_id,
                     'ip_version': 4,
-                }
+                },
             )
             from tempest.lib import exceptions as lib_exc
             try:
@@ -801,7 +802,7 @@ class VirtualEnv(object):
             params = {
                 'name': name,
                 'container_format': fmt,
-                'disk_format': disk_format if disk_format else fmt
+                'disk_format': disk_format if disk_format else fmt,
             }
             image = image_client.create_image(**params)
             assert image['status'] == "queued"
@@ -856,7 +857,7 @@ class VirtualEnv(object):
             'name': name,
             'ram': ram,
             'disk': disk,
-            'vcpus': vcpus
+            'vcpus': vcpus,
         }
 
         flavor_id = kwargs.pop('flavor_id', '')
@@ -989,7 +990,7 @@ class VirtualEnv(object):
 
         kwargs = {
             'security_groups': [],
-            'port_security_enabled': False
+            'port_security_enabled': False,
         }
 
         for a_port_id in port_ids:
@@ -1109,7 +1110,7 @@ class VirtualEnv(object):
         zone_name = "{}-{}".format(availability_zone, int(time.time()))
         kwargs = {
             'name': aggregate_name,
-            'availability_zone': zone_name
+            'availability_zone': zone_name,
         }
 
         self.class_logger.info("Creating new aggregate %s.", aggregate_name)
@@ -1183,7 +1184,7 @@ class VirtualEnv(object):
             'instance_type': 'instance',
             'ipaddr': None,
             'ssh_port': image.get('ssh_port', 22),
-            'ssh_user': image.get('ssh_user', 'root')
+            'ssh_user': image.get('ssh_user', 'root'),
         }
         _ssh_pass = image.get('ssh_pass')
         if _ssh_pass:
