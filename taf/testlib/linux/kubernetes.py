@@ -34,6 +34,10 @@ class KubernetesHelper(object):
         return len(self.kubernetes.api.list_namespaced_pod(
                    namespace='default').items)
 
+    def clear_labels(self, nodes, labels):
+        for a_node in nodes:
+            self.label_node(labels={key: None for key in labels}, name=a_node)
+
 
 class Kubernetes(object):
 
