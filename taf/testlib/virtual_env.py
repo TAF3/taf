@@ -199,7 +199,7 @@ class VirtualEnv(object):
                 with open(pubkeyfile, 'r') as stream:
                     key['public_key'] = stream.read()
             except IOError as e:
-                self.class_logger.info("ssh key provided but can't be used! ({})".format(e))
+                self.class_logger.info("ssh key provided but can't be used! (%s)", format(e))
                 generate = True
             else:
                 client = self.handle.manager.keypairs_client
@@ -388,11 +388,7 @@ class VirtualEnv(object):
             assert public_router
             _net_cfg.public_router_id = public_router['id']
 
-        if _net_cfg.public_network_id and (_net_cfg.public_router_id or
-                                           not create_external_router):
-            return True
-
-        return False
+        return  _net_cfg.public_network_id and (_net_cfg.public_router_id or not create_external_router)
 
     def _get_external_elements(self, routers_client=None):
         if not routers_client:
