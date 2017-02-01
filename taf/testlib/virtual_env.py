@@ -388,7 +388,7 @@ class VirtualEnv(object):
             assert public_router
             _net_cfg.public_router_id = public_router['id']
 
-        return  _net_cfg.public_network_id and (_net_cfg.public_router_id or not create_external_router)
+        return  _net_cfg.public_network_id and (not create_external_router or _net_cfg.public_router_id)
 
     def _get_external_elements(self, routers_client=None):
         if not routers_client:
