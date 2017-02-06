@@ -26,8 +26,6 @@ from testlib.helpers import merge_dicts
 
 class Ab(object):
 
-    # FIXME: why don't you use a namedtuple??
-
     TIMES_FIELDS = ('min', 'mean', 'sd', 'median', 'max')
 
     @classmethod
@@ -37,7 +35,6 @@ class Ab(object):
             dictionary[key][subkey] = value
 
 
-# TODO: use testlib.linux.suricata.parser.LL_Parser
 class AbParser(object):
     NOT_WHITE_SPACE = r'\S+'
     WHITE_SPACE = r'\s+'
@@ -106,6 +103,7 @@ class AbParser(object):
     def parse(self, input_buffer):
         string_io = io.StringIO(input_buffer)
 
+        self.ab_output = {}
         for line in iter(string_io.readline, ''):
             for regexp, key, setter in self.TOKENS:
                 matches = regexp.match(line)
@@ -162,6 +160,7 @@ class AbAggregator(object):
     IGNORE = [
         'time_per_request_mean',
         'time_per_request_mean_all',
+        'server_hostname',
     ]
 
     KEY_FUNC_MAPPING = {}
@@ -205,14 +204,21 @@ class AbAggregator(object):
     def _no_op(self, key, value):
         pass
 
-    def __add__(self, item):
+    def __iadd__(self, item):
         self._int_addition('number_of_clients', 1)
         for key, value in item.items():
             self.KEY_FUNC_MAPPING[key](self, key, value)
         return self
 
+    @property
+    def dictionary(self):
+        return merge_dicts(*self.status.maps)
+
+    def __eq__(self, other):
+        return self.dictionary == other
+
     def to_str(self):
-        return pformat(merge_dicts(*self.status.maps))
+        return pformat(self.dictionary)
 
     def __str__(self):
         return self.to_str()
