@@ -356,6 +356,7 @@ class SutMonitorPlugin(object):
     """
 
     def __init__(self):
+        super().__init__()
         self.sut_monitor = None
 
     @pytest.fixture(autouse=True, scope='session')
