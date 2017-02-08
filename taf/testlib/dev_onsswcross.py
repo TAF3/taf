@@ -48,12 +48,9 @@ class ONSSwitchCross(dev_basecross.GenericXConnectMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
+        super().__init__(config, opts)
         self.class_logger.info("Init ONS Switch Cross object.")
-        self.id = config['id']
-        self.type = config['instance_type']
         self.name = config['name'] if "name" in config else "noname"
-        self.config = config
-        self.opts = opts
         # Connections info:
         self.connections = []
         # Do xconnect on create?
