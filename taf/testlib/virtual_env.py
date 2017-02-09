@@ -51,6 +51,7 @@ import traceback
 
 import netaddr
 import pytest
+from contextlib import suppress
 import ast
 
 from . import loggers
@@ -355,9 +356,7 @@ class VirtualEnv(object):
         net_ip = netaddr.IPNetwork(_external_net_gw_ip_cidr)
 
         _external_net_pool_start = self.env_settings.get('external_net_pool_start')
-        assert _external_net_pool_start
         _external_net_pool_end = self.env_settings.get('external_net_pool_end')
-        assert _external_net_pool_end
         assert NET_POOL_MINIMUM <= int(_external_net_pool_start) < int(_external_net_pool_end) <= NET_POOL_MAXIMUM
 
         # Try to reuse existing stuff that meets requirements, if desirable (devstack)
@@ -390,7 +389,6 @@ class VirtualEnv(object):
                 'tenant_id': tenant_id,
             }
             public_network = self.create_public_network(**public_network_kwargs)
-            assert public_network
 
         # in case that public_network was reused subnet already exists
         if not public_network['subnets']:
@@ -522,16 +520,19 @@ class VirtualEnv(object):
         if not tenant_id:
             return None
 
+        if not external_net:
+            return None
+
         if not routers_client:
             routers_client = self.handle.os_adm.routers_client
         if not networks_client:
             networks_client = self.handle.os_adm.networks_client
 
         net_2_router_map = self._get_external_elements(routers_client=routers_client, tenant_id=tenant_id)
-        for network_id, router_id in net_2_router_map.items():
+        for network_id in net_2_router_map:
             net_network = networks_client.show_network(network_id)['network']
             for sub_net in net_network['subnets']:
-                if external_net and self.handle.os_adm.subnets_client.show_subnet(sub_net)['subnet']['gateway_ip'] in external_net:
+                if self.handle.os_adm.subnets_client.show_subnet(sub_net)['subnet']['gateway_ip'] in external_net:
                     #return the first net which meet criteria
                     self.class_logger.debug('Reusing external network: (%s)', net_network['name'])
                     return net_network
