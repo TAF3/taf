@@ -377,7 +377,6 @@ class VirtualEnv(object):
             del_external_kwargs = {
                 'routers_client': routers_client,
                 'networks_client': networks_client,
-                'ports_client': ports_client,
                 'tenant_id': tenant_id,
             }
             external_net_ids = self._delete_external_elements(**del_external_kwargs)
@@ -448,7 +447,7 @@ class VirtualEnv(object):
                 self.net_2_router_map[net_id] = None
 
         for nets_id in nets:
-            if not nets_id in self.net_2_router_map:
+            if nets_id not in self.net_2_router_map:
                 self.net_2_router_map[nets_id] = None
         return self.net_2_router_map
 
