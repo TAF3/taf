@@ -439,16 +439,13 @@ class VirtualEnv(object):
         nets = [net['id'] for net in self.handle._list_networks(**net_filter)]
         routers_resp = routers_client.list_routers()
         for router in routers_resp['routers']:
-            ext_gw_info = router.get('external_gateway_info')
-            if not ext_gw_info:
+            net_id = router.get('external_gateway_info', {}).get('network_id')
+            if not net_id or net_id not in nets:
                 continue
-            net_id = ext_gw_info.get('network_id')
-            if net_id and net_id in nets:
-                if tenant_id and tenant_id == router.get('tenant_id'):
-                    self.net_2_router_map[net_id] = router['id']
-                else:
-                    if not net_id in self.net_2_router_map:
-                        self.net_2_router_map[net_id] = None
+            if tenant_id and tenant_id == router.get('tenant_id'):
+                self.net_2_router_map[net_id] = router['id']
+            elif net_id not in self.net_2_router_map:
+                self.net_2_router_map[net_id] = None
 
         for nets_id in nets:
             if not nets_id in self.net_2_router_map:
