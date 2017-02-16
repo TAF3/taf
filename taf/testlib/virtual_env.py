@@ -124,7 +124,7 @@ class VirtualEnv(object):
     # Example: my_vIPS_image-fedora-bare.qcow2
     IMAGE_NAME_PATTERN = r'\S*{0}\S*-(?P<user>\w+)-(?P<cont_frmt>\w+)\.(?P<disk_frmt>\w+)'
 
-    def __init__(self, opts=None, external_router=True):
+    def __init__(self, opts=None):
         super(VirtualEnv, self).__init__()
         self.class_logger.info('Initializing virtual environment...')
         self.opts = opts
@@ -179,7 +179,6 @@ class VirtualEnv(object):
             'try_reuse': self.reuse_venv,
             'name': self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-net'),
             'tenant_id': self.tenant_id,
-            'create_external_router': external_router,
         }
         assert self.ensure_public_access(**public_access_kwargs)
 
@@ -325,11 +324,8 @@ class VirtualEnv(object):
         from tempest.common import waiters
         return waiters.wait_for_server_status(self.handle.servers_client, vm_id, status)
 
-    #TODO: JP check if create_external_router is needed
-    #def ensure_public_access(self, try_reuse=True, networks_client=None, routers_client=None,
-    #                         name=None, tenant_id=None):
     def ensure_public_access(self, try_reuse=True, networks_client=None, routers_client=None,
-                             name=None, tenant_id=None, create_external_router=True):
+                             name=None, tenant_id=None):
         """Create or reuse public/external router & network.
 
         :param bool try_reuse: attempt at resusing the public router/network or delete it
@@ -410,23 +406,21 @@ class VirtualEnv(object):
         _net_cfg.public_network_id = public_network['id']
 
         # create new public router
-        #TODO: JP check if create_external_router is needed
-        if create_external_router:
-            router_kwargs = {
-                'routers_client': routers_client,
-                'network_id': _net_cfg.public_network_id,
-                'tenant_id': tenant_id,
-                'enable_snat': True,
-            }
-            public_router = self.create_router(**router_kwargs)
-            assert public_router
-            _net_cfg.public_router_id = public_router['id']
+        router_kwargs = {
+            'routers_client': routers_client,
+            'network_id': _net_cfg.public_network_id,
+            'tenant_id': tenant_id,
+            'enable_snat': True,
+        }
+        public_router = self.create_router(**router_kwargs)
+        assert public_router
+        _net_cfg.public_router_id = public_router['id']
 
         if _net_cfg.public_network_id and _net_cfg.public_router_id:
             return True
 
-        #TODO: JP what should be returned here ?  Originaly it was "return False"
-        return  _net_cfg.public_network_id and (not create_external_router or _net_cfg.public_router_id)
+        return False
+
 
     def _get_external_elements(self, routers_client=None, tenant_id=None):
         if self.net_2_router_map:
