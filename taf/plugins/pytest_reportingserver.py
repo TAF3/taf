@@ -1,5 +1,5 @@
 """
-@copyright Copyright (c) 2011 - 2016, Intel Corporation.
+@copyright Copyright (c) 2011 - 2017, Intel Corporation.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -114,6 +114,7 @@ class ReportingServer(object):
     @description  Logging xmlrpc server class
     """
     REPORTINGSRV_PATH = "reporting_server.py"
+    UNDEFINED_BUILD = "Undefined"
     class_logger = loggers.ClassLogger()
 
     def __init__(self, opts):
@@ -162,15 +163,14 @@ class ReportingServer(object):
         # Check cli options first
         get_build_name = [MODULES[_var].ReportingServerConfig._get_build_name(self._opts) for _var in MODULES if "reports_conf." in _var
                           if MODULES[_var].ReportingServerConfig._get_build_name(self._opts) is not None]
-        if env_prop:
+        if env_prop and env_prop['switchppVersion'] and env_prop['chipName']:
             self._buildname = "{0}-{1}".format(env_prop['switchppVersion'], env_prop['chipName'])
             self.platform = env_prop["chipName"]
             self.build = env_prop["switchppVersion"]
         else:
             message = "Cannot determinate buildname."
             self.class_logger.warning(message)
-            # raise Exception(message)
-#            return None
+            self._buildname = self.UNDEFINED_BUILD
 
         if get_build_name and env_prop:
             self._buildname = "{0}-{1}".format(get_build_name[0], env_prop['chipName'])
@@ -343,7 +343,7 @@ class ReportingServer(object):
         try:
             env_prop = item.config.env.env_prop
         except AttributeError:
-            buildname = 'unspecified'
+            buildname = self.UNDEFINED_BUILD
         else:
             buildname = self.buildname(env_prop)
         suite_name = get_suite_name(item.nodeid)
