@@ -123,7 +123,7 @@ class OpenvSwitch(object):
         self.cli_send_command(command="ovs-vsctl del-br {}".format(br_name))
         self.update_map(br_name, delete=True)
 
-    def add_interface(self, br_name, iface_name, iface_type, **kwargs):
+    def add_interface(self, br_name, iface_name):
         """
         @brief  Add new openvswitch interface
         @param  br_name:  name of ovs bridge
@@ -136,11 +136,39 @@ class OpenvSwitch(object):
         @type  kwargs:  dict
         """
         # options available
-        options = ''.join(map(lambda x: ' options:{}={}'.format(*x), kwargs.items()))
-        command = 'ovs-vsctl add-port {0} {1} -- set interface {1} type={2}{3}'.format(br_name, iface_name, iface_type,
-                                                                                       options)
+        command = 'ovs-vsctl add-port {0} {1}'.format(br_name, iface_name)
         self.cli_send_command(command)
         self.update_map(iface_name)
+
+    def set_table_record(self, table, rec, **kwargs):
+        """
+        @brief  Set column values in record in specific table
+        @param  table:  name of ovs table
+        @type  table:  str
+        @param  rec:  name of ovs record
+        @type  rec:  str
+        @param  kwargs:  Column values dict to set
+        @type  kwargs:  dict
+        """
+        cmd_args = ' '.join(map(lambda x: '{}={}'.format(*x) if not isinstance(x[1], tuple) else '{}:{}={}'.format(x[0], *x[1]),
+                                kwargs.items()))
+        cmd = 'ovs-vsctl set {table} {rec} {cmd_args}'.format(table=table, rec=rec, cmd_args=cmd_args)
+        self.cli_send_command(cmd)
+
+    def get_table_record(self, table, rec, column):
+        """
+        @brief  Get column value in record in specific table
+        @param  table:  name of ovs table
+        @type  table:  str
+        @param  rec:  name of ovs record
+        @type  rec:  str
+        @param  column:  Column value to get
+        @type  column:  str
+        @rtype str
+        @return  Returns StdOut of get command
+        """
+        cmd = 'ovs-vsctl get {table} {rec} {col}'.format(table=table, rec=rec, col=column)
+        return self.cli_send_command(cmd).stdout
 
     def del_interface(self, br_name, iface_name):
         """
