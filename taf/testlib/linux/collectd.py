@@ -1,47 +1,51 @@
-"""
-@copyright Copyright (c) 2016, Intel Corporation.
+# Copyright (c) 2016 - 2017, Intel Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+"""``collectd.py``
 
-    http://www.apache.org/licenses/LICENSE-2.0
+`Class to abstract collectd operations`
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Note:
+    collectd.conf path is retrieved from testcases/config/setup/setup.json in format::
 
-@file collectd.py
+        {
+            "env": [
+              {
+                "id": "213207",
+                "collectd_conf_path": "/opt/collectd/etc/collectd.conf"
+              }
+            ],
+            "cross": {}
+        }
 
-@summary Class to abstract collectd operations
-@note
-collectd.conf path is retrieved from testcases/config/setup/setup.json in format:
-{
-    "env": [
-      {
-        "id": "213207",
-        "collectd_conf_path": "/opt/collectd/etc/collectd.conf"
-      }
-    ],
-    "cross": {}
-}
-If "collectd_conf_path" is not specified in setup.json then default value is set: /etc/collectd.conf
+    If "collectd_conf_path" is not specified in setup.json then default value is set: /etc/collectd.conf
 
-Examples of collectd usage in tests:
+Examples of collectd usage in tests::
 
-env.lhost[1].ui.collectd.start()
-env.lhost[1].ui.collectd.stop()
-env.lhost[1].ui.collectd.restart()
+    env.lhost[1].ui.collectd.start()
+    env.lhost[1].ui.collectd.stop()
+    env.lhost[1].ui.collectd.restart()
 
-Example of collectd.conf modifications:
-format: instance.ui.collectd.<action>.<plugin_name>()
-env.lhost[1].ui.collectd.enable.csv(DataDir='"/path/to/logs"')
-env.lhost[1].ui.collectd.disable.csv()
-env.lhost[1].ui.collectd.enable_defaults.csv()
-env.lhost[1].ui.collectd.change_param.csv(DataDir='"/path/to/logs"')
-env.lhost[1].ui.collectd.insert_param.csv(DataDir='"/path/to/logs"')
+Example of collectd.conf modifications::
+
+    format: instance.ui.collectd.<action>.<plugin_name>()
+    env.lhost[1].ui.collectd.enable.csv(DataDir='"/path/to/logs"')
+    env.lhost[1].ui.collectd.disable.csv()
+    env.lhost[1].ui.collectd.enable_defaults.csv()
+    env.lhost[1].ui.collectd.change_param.csv(DataDir='"/path/to/logs"')
+    env.lhost[1].ui.collectd.insert_param.csv(DataDir='"/path/to/logs"')
+
 """
 
 import re
@@ -92,8 +96,8 @@ ACTIONS = {'enable': {'cmd': [r"printf  '{0}' >> {{collectd_conf}}".format(LOAD_
 
 class CollectdConfCommandGenerator(object):
     def __init__(self, action, command_generator, collectd_conf, plugin_list=PLUGINS):
-        """
-        @brief  Initialize collectd conf command generator class
+        """Initialize collectd conf command generator class.
+
         """
         super(CollectdConfCommandGenerator, self).__init__()
         self.plugin_list = plugin_list
@@ -103,8 +107,8 @@ class CollectdConfCommandGenerator(object):
 
 class CollectdPluginsManager(object):
     def __init__(self, action, collectd_conf_commands, run):
-        """
-        @brief  Initialize collectd conf manager class
+        """Initialize collectd conf manager class.
+
         """
         super(CollectdPluginsManager, self).__init__()
         for cmd in collectd_conf_commands.plugin_list:
@@ -124,8 +128,8 @@ def collectd_conf_action(action, run_func, collectd_conf):
 
 
 def command_generator(action, plugin, collectd_conf):
-    """
-    @brief Wrapper to map collectd operations with related commands
+    """Wrapper to map collectd operations with related commands.
+
     """
     def method(**params):
         command_list = []
@@ -154,8 +158,8 @@ class Collectd(object):
     DEFAULT_COLLECTD_CONF = '/etc/collectd.conf'
 
     def __init__(self, cli_send_command, cli_set_command, collectd_conf=None):
-        """
-        @brief Initialize Collectd class.
+        """Initialize Collectd class.
+
         """
         super(Collectd, self).__init__()
         self.send_command = cli_send_command
@@ -167,14 +171,14 @@ class Collectd(object):
             setattr(self, action, collectd_conf_action(action, self.cli_set_command, self.collectd_conf))
 
     def start(self):
-        """
-        @brief Start collectd service
+        """Start collectd service.
+
         """
         return self.service_manager.start()
 
     def stop(self):
-        """
-        @brief Stop collectd service
+        """Stop collectd service.
+
         """
         return self.service_manager.stop()
 
@@ -182,8 +186,8 @@ class Collectd(object):
         return self.service_manager.status(expected_rcs={0, 3})
 
     def restart(self):
-        """
-        @brief Restart collectd service
+        """Restart collectd service.
+
         """
         return self.service_manager.restart()
 
@@ -191,8 +195,8 @@ class Collectd(object):
         return service_lib.ServiceConfigChangeContext(self.service_manager)
 
     def add_globals(self, **kwargs):
-        """
-        @brief Add global collectd variables in collectd.conf
+        """Add global collectd variables in collectd.conf.
+
         """
         inserts = r'\n'.join("{} {}".format(param, re.escape(str(val))) for param, val in kwargs.items())
         command = r"sed -i '1s/^/{}\n/' {}"
