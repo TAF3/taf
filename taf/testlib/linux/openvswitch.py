@@ -1,5 +1,5 @@
 """
-@copyright Copyright (c) 2016, Intel Corporation.
+@copyright Copyright (c) 2016 - 2017, Intel Corporation.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -123,7 +123,7 @@ class OpenvSwitch(object):
         self.cli_send_command(command="ovs-vsctl del-br {}".format(br_name))
         self.update_map(br_name, delete=True)
 
-    def add_interface(self, br_name, iface_name, iface_type, **kwargs):
+    def add_interface(self, br_name, iface_name, iface_type='', **kwargs):
         """
         @brief  Add new openvswitch interface
         @param  br_name:  name of ovs bridge
@@ -135,11 +135,13 @@ class OpenvSwitch(object):
         @param  kwargs:  interface options
         @type  kwargs:  dict
         """
-        # options available
+        base_cmd = 'ovs-vsctl add-port {0} {1}'.format(br_name, iface_name)
+        if_type = ' type={0}'.format(iface_type) if iface_type else ''
         options = ''.join(map(lambda x: ' options:{}={}'.format(*x), kwargs.items()))
-        command = 'ovs-vsctl add-port {0} {1} -- set interface {1} type={2}{3}'.format(br_name, iface_name, iface_type,
-                                                                                       options)
-        self.cli_send_command(command)
+        # Apply external command to ovs if interface type or options are given
+        extd_cmd = ' -- set interface {0}{1}{2}'.format(iface_name, if_type, options) if iface_type or kwargs else ''
+
+        self.cli_send_command(''.join([base_cmd, extd_cmd]))
         self.update_map(iface_name)
 
     def del_interface(self, br_name, iface_name):
