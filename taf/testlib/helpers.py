@@ -95,8 +95,8 @@ def run_on_tg(x, y=skip_reason):
 
 def run_on_ixnetwork(y="Run on IxNetwork setup only"):
     return pytest.mark.skipif(
-            "all(not x.is_protocol_emulation_present for x in config.env.tg.values())",
-            reason=y)
+        "all(not x.is_protocol_emulation_present for x in config.env.tg.values())",
+        reason=y)
 
 
 def get_attribute_from_argvalue(argvalue, item):
@@ -450,7 +450,7 @@ def wait_until_fdb_entry_is_added(mac_address=None, port_id=1, timeout=5, vlan_i
                     break
         else:
             raise Exception("Timeout exceeded: Entry with %s MAC-address, %s Port Id and %s Vlan Id is not added during timeout" %
-                                (mac_address, port_id, vlan_id))
+                            (mac_address, port_id, vlan_id))
 
 
 def is_entry_added_to_fdb(mac_address=None, port_id=1, vlan_id=1, switch_instance=None):
