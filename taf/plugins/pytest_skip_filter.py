@@ -54,6 +54,7 @@ def _istrue(self):
             self.result = True
     return getattr(self, 'result', False)
 
+
 MarkEvaluator._istrue = _istrue
 
 

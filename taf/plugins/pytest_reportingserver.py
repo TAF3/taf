@@ -38,6 +38,8 @@ from testlib.xmlrpc_proxy import TimeoutServerProxy as XMLRPCProxy
 
 
 MODULES = {}
+
+
 def imp_plugins(dest):
     """Import all py modules from <dest> subfolder.
 
@@ -49,6 +51,7 @@ def imp_plugins(dest):
     for _m in _list:
         _module = "{0}.{1}".format(dest, _m)
         MODULES[_module] = __import__(_m)
+
 
 imp_plugins("reports_conf")
 
@@ -506,7 +509,7 @@ class ReportingServer(object):
         for _var in MODULES:
             if "reports_conf." in _var:
                 commands = MODULES[_var].ReportingServerConfig._sessionstart(self.class_logger, item, self.self_name,
-                                                                               self.buildname(item.config.env.env_prop))
+                                                                             self.buildname(item.config.env.env_prop))
                 for comm in commands:
                     self.server_cmd(*comm)
         # Order TM reporting to server.

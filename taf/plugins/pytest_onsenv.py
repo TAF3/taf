@@ -69,11 +69,11 @@ def _check_pytest_version(version, max_version):
     return False
 
 if _check_pytest_version(pytest.__version__, '2.5.2'):
-    from _pytest.python import FixtureDef
+    from _pytest.python import FixtureDef  # pylint: disable=no-name-in-module
     FixtureDef.finish = finish
 
-# WORKAROUND END
 
+# WORKAROUND END
 TESTENV_OPTIONS = ["none", "simplified2", "simplified3", "simplified4", "simplified5", "golden",
                    "diamond", "mixed"]
 

@@ -55,18 +55,18 @@ class ReturnsPlugin(object):
             cls.RESULT_PASSED: {
                 'outcome': cls.RESULT_PASSED,
                 'letter': 'P',
-                'msg': 'PASSED'
+                'msg': 'PASSED',
             },
             cls.RESULT_SKIPPED: {
                 'outcome': cls.RESULT_SKIPPED,
                 'letter': 'S',
-                'msg': 'SKIPPED'
+                'msg': 'SKIPPED',
             },
             cls.RESULT_FAILED: {
                 'outcome': cls.RESULT_FAILED,
                 'letter': 'F',
-                'msg': 'FAILED'
-            }
+                'msg': 'FAILED',
+            },
         }
 
     @classmethod
