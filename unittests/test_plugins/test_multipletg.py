@@ -1,22 +1,23 @@
+# Copyright (c) 2015 - 2017, Intel Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""``test_multipletg.py``
+
+`Unittests for pytest_multipletg plugin`
+
 """
-@copyright Copyright (c) 2015 - 2016, Intel Corporation.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-@file test_multipletg.py
-
-@summary Unittests for pytest_multipletg plugin.
-"""
 import copy
 from unittest.mock import patch, MagicMock
 
@@ -177,30 +178,35 @@ class FakeOpts(object):
 
 @pytest.fixture()
 def env(request, monkeypatch):
-    "Fixture of environment with LXC for unittests of methods get_ports and get_speed."
+    """Fixture of environment with LXC for unittests of methods get_ports and get_speed.
+
+    """
     env = EnvTest(SETUP, ENV)
     return env.start(request, monkeypatch)
 
 
 @pytest.fixture()
 def env_list(request, monkeypatch):
-    "Fixture of environment with LXC for unittests of methods get_ports and get_speed."
+    """Fixture of environment with LXC for unittests of methods get_ports and get_speed.
 
+    """
     env = EnvTest(SETUP_LIST, ENV)
     return env.start(request, monkeypatch)
 
 
 @pytest.fixture()
 def env_complex(request, monkeypatch):
-    "Fixture of environment with LXC for unittests of methods get_ports and get_speed."
+    """Fixture of environment with LXC for unittests of methods get_ports and get_speed.
+
+    """
     env = EnvTest(SETUP_COMPLEX, ENV)
     return env.start(request, monkeypatch)
 
 
 # Tests for pytest_multipletg plugin
 def test_multipletg_1(request, env):
-    """
-    @brief  Verify pytest_multipletg plugin creates MultipleTG instance and modifies env.tg dict
+    """Verify pytest_multipletg plugin creates MultipleTG instance and modifies env.tg dict.
+
     """
     # Verify env.tg before
     assert list(env.tg.keys()) == [1, 2]
@@ -220,8 +226,8 @@ def test_multipletg_1(request, env):
 
 
 def test_multipletg_2(request, env):
-    """
-    @brief  Verify pytest_multipletg plugin modifies cross section
+    """Verify pytest_multipletg plugin modifies cross section.
+
     """
     assert env.cross[1].connections == [
         ["03", 1, "01", 1],
@@ -245,8 +251,8 @@ def test_multipletg_2(request, env):
 
 
 def test_multipletg_3(request, env):
-    """
-    @brief  Verify pytest_multipletg plugin restores env.tg dict on teardown
+    """Verify pytest_multipletg plugin restores env.tg dict on teardown.
+
     """
     tg = MultipleTGClass(env)
     tg.setup()
@@ -258,8 +264,8 @@ def test_multipletg_3(request, env):
 
 
 def test_multipletg_4(request, env):
-    """
-    @brief  Verify pytest_multipletg plugin restores cross section on teardown
+    """Verify pytest_multipletg plugin restores cross section on teardown.
+
     """
     tg = MultipleTGClass(env)
     tg.setup()
@@ -273,8 +279,8 @@ def test_multipletg_4(request, env):
 
 
 def test_multipletg_5(request, env_list):
-    """
-    @brief  Verify pytest_multipletg plugin creates port_list if it is in setup
+    """Verify pytest_multipletg plugin creates port_list if it is in setup.
+
     """
     tg = MultipleTGClass(env_list)
     tg.setup()
@@ -287,8 +293,8 @@ def test_multipletg_5(request, env_list):
 
 
 def test_multipletg_6(request, env_complex):
-    """
-    @brief  Verify pytest_multipletg plugin modifies cross section in complex setup
+    """Verify pytest_multipletg plugin modifies cross section in complex setup.
+
     """
     assert env_complex.cross[1].connections == [
         ["01", 1, "03", 1],

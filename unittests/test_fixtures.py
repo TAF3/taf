@@ -1,22 +1,23 @@
+# Copyright (c) 2011 - 2017, Intel Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""``test_fixtures.py``
+
+Unittests for TAF fixtures`
+
 """
-@copyright Copyright (c) 2011 - 2016, Intel Corporation.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-@file test_fixtures.py
-
-@summary Unittests for TAF fixtures.
-"""
 import copy
 import os
 import xmlrpc.client
@@ -212,30 +213,35 @@ def fake_xmlrpc(request):
 
 @pytest.fixture()
 def env(request, monkeypatch, fake_xmlrpc):
-    "Fixture of environment with LXC for unittests of methods get_ports and get_speed."
+    """Fixture of environment with LXC for unittests of methods get_ports and get_speed.
+
+    """
     env = EnvTest(SETUP_SIMPLIFIED, ENV)
     return env.start(request, monkeypatch, fake_xmlrpc)
 
 
 @pytest.fixture()
 def env_list(request, monkeypatch, fake_xmlrpc):
-    "Fixture of environment with LXC for unittests of methods get_ports and get_speed."
+    """Fixture of environment with LXC for unittests of methods get_ports and get_speed.
 
+    """
     env = EnvTest(SETUP_SIMPLIFIED_LIST, ENV)
     return env.start(request, monkeypatch, fake_xmlrpc)
 
 
 @pytest.fixture()
 def env_complex(request, monkeypatch, fake_xmlrpc):
-    "Fixture of environment with LXC for unittests of methods get_ports and get_speed."
+    """Fixture of environment with LXC for unittests of methods get_ports and get_speed.
+
+    """
     env = EnvTest(SETUP_COMPLEX, ENV)
     return env.start(request, monkeypatch, fake_xmlrpc)
 
 
 # Tests for env_lag fixture
 def test_env_lag_1(request, env):
-    """
-    @brief  Verify env_lag fixture adds LAGs into ports list
+    """Verify env_lag fixture adds LAGs into ports list.
+
     """
     fixtures.env_lag(request, env)
     for _switch in env.switch.values():
@@ -245,8 +251,8 @@ def test_env_lag_1(request, env):
 
 
 def test_env_lag_2(request, env):
-    """
-    @brief  Verify env_lag fixture adds LAGs into LagsAdmin table
+    """Verify env_lag fixture adds LAGs into LagsAdmin table.
+
     """
     fixtures.env_lag(request, env)
     for _switch in env.switch.values():
@@ -256,8 +262,8 @@ def test_env_lag_2(request, env):
 
 
 def test_env_lag_3(request, env):
-    """
-    @brief  Verify env_lag fixture adds ports to LAGs
+    """Verify env_lag fixture adds ports to LAGs.
+
     """
     fixtures.env_lag(request, env)
     for _switch in env.switch.values():
@@ -268,8 +274,8 @@ def test_env_lag_3(request, env):
 
 
 def test_env_lag_4(request, env_list):
-    """
-    @brief  Verify env_lag fixture adds LAGs into port_list
+    """Verify env_lag fixture adds LAGs into port_list.
+
     """
     fixtures.env_lag(request, env_list)
     for _switch in env_list.switch.values():
@@ -288,8 +294,8 @@ def test_env_lag_4(request, env_list):
 
 
 def test_env_lag_5(request, env_list):
-    """
-    @brief  Verify env_lag fixture adds LAGs into LagsAdmin table
+    """Verify env_lag fixture adds LAGs into LagsAdmin table.
+
     """
     fixtures.env_lag(request, env_list)
     for _switch in env_list.switch.values():
@@ -299,8 +305,8 @@ def test_env_lag_5(request, env_list):
 
 
 def test_env_lag_6(request, env_list):
-    """
-    @brief  Verify env_lag fixture adds ports to LAGs
+    """Verify env_lag fixture adds ports to LAGs.
+
     """
     fixtures.env_lag(request, env_list)
     for _switch in env_list.switch.values():
@@ -311,8 +317,8 @@ def test_env_lag_6(request, env_list):
 
 
 def test_env_lag_7(request, env):
-    """
-    @brief  Verify env_lag fixture changes links in setup file
+    """Verify env_lag fixture changes links in setup file.
+
     """
     fixtures.env_lag(request, env)
     for _switch in env.switch.values():
@@ -325,8 +331,8 @@ def test_env_lag_7(request, env):
 
 
 def test_env_lag_8(request, env_list):
-    """
-    @brief  Verify env_lag fixture changes links in setup file
+    """Verify env_lag fixture changes links in setup file.
+
     """
     fixtures.env_lag(request, env_list)
     for _switch in env_list.switch.values():
@@ -339,9 +345,8 @@ def test_env_lag_8(request, env_list):
 
 
 def test_env_lag_9(request, env):
-    """
-    @brief  Verify env_lag fixture doesn't add LAGs into ports list in case max_lags
-            is less than links count
+    """Verify env_lag fixture doesn't add LAGs into ports list in case max_lags is less than links count.
+
     """
     env.switch[1].hw.max_lags = 4
     fixtures.env_lag(request, env)
@@ -353,9 +358,8 @@ def test_env_lag_9(request, env):
 
 
 def test_env_lag_10(request, env_list):
-    """
-    @brief  Verify env_lag fixture doesn't add LAGs into ports list in case max_lags
-            is less than links count
+    """Verify env_lag fixture doesn't add LAGs into ports list in case max_lags is less than links count.
+
     """
     env_list.switch[1].hw.max_lags = 4
     fixtures.env_lag(request, env_list)
@@ -371,9 +375,8 @@ def test_env_lag_10(request, env_list):
 
 
 def test_env_lag_11(request, env):
-    """
-    @brief  Verify env_lag fixture doesn't add LAGs into ports list in case
-            port is already in LAG
+    """Verify env_lag fixture doesn't add LAGs into ports list in case port is already in LAG.
+
     """
     env.switch[1].ui.create_lag(3900, 100, "Static", "None")
     env.switch[1].ui.create_lag_ports([1, ], 3900, 100)
@@ -386,9 +389,8 @@ def test_env_lag_11(request, env):
 
 
 def test_env_lag_12(request, env_list):
-    """
-    @brief  Verify env_lag fixture doesn't add LAGs into ports list in case
-            port is already in LAG
+    """Verify env_lag fixture doesn't add LAGs into ports list in case port is already in LAG.
+
     """
     env_list.switch[1].ui.create_lag(3900, 100, "Static", "None")
     env_list.switch[1].ui.create_lag_ports([1, ], 3900, 100)
@@ -405,8 +407,8 @@ def test_env_lag_12(request, env_list):
 
 
 def test_env_lag_13(request, env_complex):
-    """
-    @brief  Verify env_lag fixture adds LAGs into ports list in complex setup
+    """Verify env_lag fixture adds LAGs into ports list in complex setup.
+
     """
     fixtures.env_lag(request, env_complex)
     for _switch in env_complex.switch.values():
@@ -418,8 +420,8 @@ def test_env_lag_13(request, env_complex):
 
 
 def test_env_lag_14(request, env_complex):
-    """
-    @brief  Verify env_lag fixture adds LAGs into LagsAdmin table in complex setup
+    """Verify env_lag fixture adds LAGs into LagsAdmin table in complex setup.
+
     """
     fixtures.env_lag(request, env_complex)
     for _switch in env_complex.switch.values():
@@ -431,8 +433,8 @@ def test_env_lag_14(request, env_complex):
 
 
 def test_env_lag_15(request, env_complex):
-    """
-    @brief  Verify env_lag fixture adds ports to LAGs in complex setup
+    """Verify env_lag fixture adds ports to LAGs in complex setup.
+
     """
     fixtures.env_lag(request, env_complex)
     for _switch in env_complex.switch.values():
