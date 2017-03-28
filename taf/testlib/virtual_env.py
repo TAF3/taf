@@ -28,7 +28,9 @@ limitations under the License.
 #  "instance_type": "settings",
 #  "id": "993",
 #  "images_share_path": "/mnt/berta/oses/openstack",
-#  "mgmt_ip_cidr": "11.212.23.11/8",
+#  "external_net_gw_ip_cidr": "192.168.31.1/24",
+#  "external_net_pool_start": "100",
+#  "external_net_pool_end": "199",
 #  "other_configs": {"ovs_type": "ovs",}
 # }
 ###############################################################################
@@ -39,11 +41,9 @@ import os
 import json
 import pprint
 import itertools
-from functools import wraps
-import traceback
-
 import netaddr
 import pytest
+from functools import wraps
 
 from . import loggers
 from . import environment
@@ -51,6 +51,12 @@ from .custom_exceptions import TAFCoreException
 from .dev_linux_host_vm import GenericLinuxVirtualHost
 from .helpers import merge_dicts
 from .common3 import Environment, custom_classes
+
+
+# external_net_pool_start and external_net_pool_end values have to be inside
+# range defined by following two constants:
+NET_POOL_MINIMUM = 1
+NET_POOL_MAXIMUM = 254
 
 
 class OpenStackNoSuchImage(Exception):
@@ -314,10 +320,10 @@ class VirtualEnv(object):
         from tempest.common import waiters
         return waiters.wait_for_server_status(self.handle.servers_client, vm_id, status)
 
-    def ensure_public_access(self, try_reuse=False, name=None, tenant_id=None):
-        """Create or reuse public/external router & network.
+    def ensure_public_access(self, try_reuse=True, name=None, tenant_id=None):
+        """Create or reuse public/external network.
 
-        :param bool try_reuse: attempt at resusing the public router/network or delete it
+        :param bool try_reuse: attempt at resusing the public network or delete it
         :param name:
         :param tenant_id:
         :return bool: whether or not creation/reuse has been successful
@@ -328,10 +334,13 @@ class VirtualEnv(object):
         if not tenant_id:
             tenant_id = self.tenant_id
 
-        _net_cfg = self.config.network
-        _mgmt_ip_cidr = self.env_settings.get('mgmt_ip_cidr')
-        assert _mgmt_ip_cidr
-        net_ip = netaddr.IPNetwork(_mgmt_ip_cidr)
+        _external_net_gw_ip_cidr = self.env_settings.get('external_net_gw_ip_cidr')
+        assert _external_net_gw_ip_cidr
+        net_ip = netaddr.IPNetwork(_external_net_gw_ip_cidr)
+        _external_net_pool_start = self.env_settings.get('external_net_pool_start')
+        _external_net_pool_end = self.env_settings.get('external_net_pool_end')
+
+        assert NET_POOL_MINIMUM <= int(_external_net_pool_start) < int(_external_net_pool_end) <= NET_POOL_MAXIMUM
 
         # Try to reuse existing stuff that meets requirements, if desirable (devstack)
         if try_reuse and self._reuse_public_access(net_ip):
@@ -339,7 +348,7 @@ class VirtualEnv(object):
             return True
 
         self.class_logger.debug('No reuse')
-        # create new public router & network
+        # create new public network
         public_network_kwargs = {
             'name': name,
             'tenant_id': tenant_id,
@@ -348,22 +357,22 @@ class VirtualEnv(object):
         assert public_network
 
         subnet_name = self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-subnet')
-        allocation_prefix = _mgmt_ip_cidr.rsplit('.', 1)[0]
+        allocation_prefix = _external_net_gw_ip_cidr.rsplit('.', 1)[0]
         subnet_kwargs = {
-            'cidr': '{}/{}'.format(net_ip.network, net_ip.prefixlen),
+            'cidr': '{}'.format(net_ip.cidr),
             'name': subnet_name,
             'tenant_id': tenant_id,
             'ip_version': 4,
             'allocation_pools': [{
-                'start': '{}.100'.format(allocation_prefix),
-                'end': '{}.254'.format(allocation_prefix)}],
+                'start': '{}.{}'.format(allocation_prefix, _external_net_pool_start),
+                'end': '{}.{}'.format(allocation_prefix, _external_net_pool_end)}],
             'gateway_ip': net_ip.ip,
             'enable_dhcp': False,
         }
         self._create_subnet(public_network['id'], **subnet_kwargs)
 
-        _net_cfg.public_network_id = public_network['id']
-        return _net_cfg.public_network_id
+        self.config.network.public_network_id = public_network['id']
+        return self.config.network.public_network_id
 
     def _get_external_elements(self):
         routers_client = self.handle.os_adm.routers_client
@@ -398,9 +407,9 @@ class VirtualEnv(object):
                                     networks_client.show_network(network_id)['network']['name'])
             networks_client.delete_network(network_id)
 
-    def _reuse_public_access(self, mgmt_net):
+    def _reuse_public_access(self, net_ip):
         """
-        @brief   Search for the external networks and verify gateway IP in defined network(mgmt_net)
+        @brief   Search for the external networks and verify gateway IP in required network(net_ip)
         """
         subnets = self.handle._list_subnets()
         net_filter = {'router:external': True}
@@ -409,7 +418,7 @@ class VirtualEnv(object):
             # if multiple external network, we need to cleanup all
             for subnet_id in nets[0]['subnets']:
                 subnet = [sub for sub in subnets if sub['id'] == subnet_id]
-                if subnet and subnet[0]['gateway_ip'] and subnet[0]['gateway_ip'] in mgmt_net:
+                if subnet and subnet[0]['gateway_ip'] and subnet[0]['gateway_ip'] in net_ip:
                     self.config.network.public_network_id = nets[0]['id']
                     return True
         return False
@@ -585,7 +594,6 @@ class VirtualEnv(object):
 
         :param name:
         :param tenant_id:
-        :param bool delete_external: whether or not to delete already existing networks/routers
         :return: network
         """
 
