@@ -43,6 +43,7 @@ import pprint
 import itertools
 import netaddr
 import pytest
+import ast
 from functools import wraps
 
 from . import loggers
@@ -127,7 +128,7 @@ class VirtualEnv(object):
         self.opts = opts
         self.env_settings = self._get_settings(self.opts.env)
         self.tempest_path = self.opts.tempest_path
-        self.reuse_venv = self.opts.reuse_venv
+        self.reuse_venv = ast.literal_eval(self.opts.reuse_venv)
         self.neutron_extensions = None
         self.services = None
 
