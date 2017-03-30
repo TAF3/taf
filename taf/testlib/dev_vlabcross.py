@@ -50,12 +50,10 @@ class VlabEnv(dev_basecross.GenericXConnectMixin):
         @type  opts:  OptionParser
         @raise  CrossException:  error in vlab path
         """
-        self.id = config['id']
-        self.type = config['instance_type']
+        super().__init__(config, opts)
         self.ipaddr = config['ip_host']
         self.port = config['ip_port'] if "ip_port" in config else "8050"
         self.ifaces = config['ports']
-        self.opts = opts
         # Do xconnect on create?
         self.autoconnect = config['autoconnect'] if "autoconnect" in config else True
 

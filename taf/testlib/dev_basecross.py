@@ -87,9 +87,7 @@ class ZeroCross(GenericXConnectMixin):
         """
         @brief  Initialize ZeroCross class
         """
-        self.id = config['id']
-        self.type = config['instance_type']
-        self.opts = opts
+        super().__init__(config, opts)
         self.autoconnect = True
 
     def xconnect(self, connection=None):

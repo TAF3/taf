@@ -39,9 +39,7 @@ class StaticCrossONS(dev_basecross.GenericXConnectMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
-        self.id = config['id']
-        self.type = config['instance_type']
-        self.opts = opts
+        super().__init__(config, opts)
         self.autoconnect = config['autoconnect'] if "autoconnect" in config else True
 
         # Store configuration of related devices

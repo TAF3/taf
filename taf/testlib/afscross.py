@@ -44,7 +44,7 @@ class AFS(GenericXConnectMixin):
         @type  env:  Environment
         """
         self.class_logger.debug("Create AFS object.")
-        self.opts = opts
+        super().__init__(config, opts)
 
         # Correcting AFS port map
         if "mapcorrector" in config:

@@ -50,12 +50,13 @@ class OvsControllerGeneralMixin(entry_template.GenericEntry):
     """
     class_logger = loggers.ClassLogger()
 
-    def __init__(self, config):
+    def __init__(self, config, opts):
         """
         @brief  Initialize OvsControllerGeneralMixin class
         @param  config:  Configuration information.
         @type  config:  dict
         """
+        super().__init__(config, opts)
         self.val = config['related_id'][0]
         self.sw_type = config['related_conf'][self.val]['instance_type']
         if 'ip_host' in list(config.keys()):
@@ -460,10 +461,9 @@ class NoxControllerLocal(OvsControllerGeneralMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
-        super(NoxControllerLocal, self).__init__(config)
+        super(NoxControllerLocal, self).__init__(config, opts)
         self.popen = None
         self.pid = None
-        self.opts = opts
         self.cmdproxy = JsonCommand(self.json_ipaddr, self.port)
         self.waiton_err_message = "OVS controller is started but does not respond."
 
@@ -600,7 +600,7 @@ class FloodlightControllerLocal(OvsControllerGeneralMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
-        super(FloodlightControllerLocal, self).__init__(config)
+        super(FloodlightControllerLocal, self).__init__(config, opts)
         self.popen = None
         self.pid = None
         self.opts = opts
@@ -744,7 +744,7 @@ class OFtestControllerLocal(OvsControllerGeneralMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
-        super(OFtestControllerLocal, self).__init__(config)
+        super(OFtestControllerLocal, self).__init__(config, opts)
         self.popen = None
         self.pid = None
         self.opts = opts
@@ -874,7 +874,7 @@ class OvsControllerRemote(OvsControllerGeneralMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
-        super(OvsControllerRemote, self).__init__(config)
+        super(OvsControllerRemote, self).__init__(config, opts)
         self.popen = None
         self.pid = None
         self.opts = opts

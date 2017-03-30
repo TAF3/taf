@@ -44,10 +44,8 @@ class VethCross(GenericXConnectMixin):
         @param  opts:  py.test config.option object which contains all py.test cli options.
         @type  opts:  OptionParser
         """
+        super().__init__(config, opts)
         self.class_logger.info("VethCross is selected.")
-        self.id = config['id']
-        self.type = config['instance_type']
-        self.opts = opts
         # Connections info:
         self.connections = []
         # Do xconnect on create?
