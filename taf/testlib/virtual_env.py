@@ -28,10 +28,17 @@ limitations under the License.
 #  "instance_type": "settings",
 #  "id": "993",
 #  "images_share_path": "/mnt/berta/oses/openstack",
-#  "mgmt_ip_cidr": "11.212.23.11/8",
+#  "external_net_gw_ip_cidr": "192.168.31.1/24",
+#  "external_net_pool_start": "100",
+#  "external_net_pool_end": "199",
 #  "other_configs": {"ovs_type": "ovs",}
 # }
 ###############################################################################
+# external_net_pool_start and external_net_pool_end values have to be inside 
+# range defined by following two constants: 
+NET_POOL_MINIMUM = 1
+NET_POOL_MAXIMUM = 254
+
 
 import time
 import re
@@ -44,6 +51,8 @@ import traceback
 
 import netaddr
 import pytest
+from contextlib import suppress
+import ast
 
 from . import loggers
 from . import environment
@@ -115,15 +124,16 @@ class VirtualEnv(object):
     # Example: my_vIPS_image-fedora-bare.qcow2
     IMAGE_NAME_PATTERN = r'\S*{0}\S*-(?P<user>\w+)-(?P<cont_frmt>\w+)\.(?P<disk_frmt>\w+)'
 
-    def __init__(self, opts=None, external_router=True):
+    def __init__(self, opts=None):
         super(VirtualEnv, self).__init__()
         self.class_logger.info('Initializing virtual environment...')
         self.opts = opts
         self.env_settings = self._get_settings(self.opts.env)
         self.tempest_path = self.opts.tempest_path
-        self.reuse_venv = self.opts.reuse_venv
+        self.reuse_venv = ast.literal_eval(self.opts.reuse_venv)
         self.neutron_extensions = None
         self.services = None
+        self.net_2_router_map = {}
 
         import tempest
         from tempest.scenario.manager import NetworkScenarioTest
@@ -169,7 +179,6 @@ class VirtualEnv(object):
             'try_reuse': self.reuse_venv,
             'name': self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-net'),
             'tenant_id': self.tenant_id,
-            'create_external_router': external_router,
         }
         assert self.ensure_public_access(**public_access_kwargs)
 
@@ -315,8 +324,8 @@ class VirtualEnv(object):
         from tempest.common import waiters
         return waiters.wait_for_server_status(self.handle.servers_client, vm_id, status)
 
-    def ensure_public_access(self, try_reuse=False, networks_client=None, routers_client=None,
-                             name=None, tenant_id=None, create_external_router=True):
+    def ensure_public_access(self, try_reuse=True, networks_client=None, routers_client=None,
+                             name=None, tenant_id=None):
         """Create or reuse public/external router & network.
 
         :param bool try_reuse: attempt at resusing the public router/network or delete it
@@ -338,77 +347,106 @@ class VirtualEnv(object):
             tenant_id = self.tenant_id
 
         _net_cfg = self.config.network
-        _mgmt_ip_cidr = self.env_settings.get('mgmt_ip_cidr')
-        assert _mgmt_ip_cidr
-        net_ip = netaddr.IPNetwork(_mgmt_ip_cidr)
+        _external_net_gw_ip_cidr = self.env_settings.get('external_net_gw_ip_cidr')
+        assert _external_net_gw_ip_cidr
+        net_ip = netaddr.IPNetwork(_external_net_gw_ip_cidr)
+
+        _external_net_pool_start = self.env_settings.get('external_net_pool_start')
+        _external_net_pool_end = self.env_settings.get('external_net_pool_end')
+        assert NET_POOL_MINIMUM <= int(_external_net_pool_start) < int(_external_net_pool_end) <= NET_POOL_MAXIMUM
 
         # Try to reuse existing stuff that meets requirements, if desirable (devstack)
-        if try_reuse and self._reuse_public_access(net_ip, routers_client=routers_client):
-            self.class_logger.debug('Reused')
+        if try_reuse and self._reuse_public_access(net_ip, routers_client=routers_client, tenant_id=tenant_id):
+            self.class_logger.debug('public net and router were Reused')
             return True
 
-        self.class_logger.debug('No reuse')
-        # create new public router & network
-        public_network_kwargs = {
-            'routers_client': routers_client,
-            'networks_client': networks_client,
-            'delete_external': True,
-            'name': name,
-            'tenant_id': tenant_id,
-        }
-        public_network = self.create_public_network(**public_network_kwargs)
-        assert public_network
+        public_network = None
+        # Try to reuse public network created by different tenant (needed for magnum)
+        if try_reuse:
+            public_network = self._reuse_public_network(net_ip, routers_client=routers_client, networks_client=networks_client, tenant_id=tenant_id)
 
-        subnet_name = self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-subnet')
-        allocation_prefix = _mgmt_ip_cidr.rsplit('.', 1)[0]
-        subnet_kwargs = {
-            'cidr': '{}/{}'.format(net_ip.network, net_ip.prefixlen),
-            'routers_client': routers_client,
-            'name': subnet_name,
-            'tenant_id': tenant_id,
-            'ip_version': 4,
-            'allocation_pools': [{
-                'start': '{}.100'.format(allocation_prefix),
-                'end': '{}.254'.format(allocation_prefix)}],
-            'gateway_ip': net_ip.ip,
-            'enable_dhcp': False,
-        }
-        self._create_subnet(public_network['id'], **subnet_kwargs)
+        if public_network:
+            self.class_logger.debug('public net was Reused')
+        else:
+            self.class_logger.debug('No reuse')
+
+            del_external_kwargs = {
+                'routers_client': routers_client,
+                'networks_client': networks_client,
+                'tenant_id': tenant_id,
+            }
+            external_net_ids = self._delete_external_elements(**del_external_kwargs)
+
+            # create new public network
+            public_network_kwargs = {
+                'networks_client': networks_client,
+                'name': name,
+                'tenant_id': tenant_id,
+            }
+            public_network = self.create_public_network(**public_network_kwargs)
+
+        # in case that public_network was reused subnet already exists
+        if not public_network['subnets']:
+            subnet_name = self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-subnet')
+            allocation_prefix = _external_net_gw_ip_cidr.rsplit('.', 1)[0]
+            subnet_kwargs = {
+                'cidr': '{}'.format(net_ip.cidr),
+                'routers_client': routers_client,
+                'name': subnet_name,
+                'tenant_id': tenant_id,
+                'ip_version': 4,
+                'allocation_pools': [{
+                    'start': '{}.{}'.format(allocation_prefix, _external_net_pool_start),
+                    'end': '{}.{}'.format(allocation_prefix, _external_net_pool_end)}],
+                'gateway_ip': '{}'.format(net_ip.ip),
+                'enable_dhcp': False,
+            }
+            self._create_subnet(public_network['id'], **subnet_kwargs)
 
         _net_cfg.public_network_id = public_network['id']
 
-        if create_external_router:
-            router_kwargs = {
-                'routers_client': routers_client,
-                'network_id': _net_cfg.public_network_id,
-                'tenant_id': tenant_id,
-                'enable_snat': True,
-            }
-            public_router = self.create_router(**router_kwargs)
-            assert public_router
-            _net_cfg.public_router_id = public_router['id']
+        # create new public router
+        router_kwargs = {
+            'routers_client': routers_client,
+            'network_id': _net_cfg.public_network_id,
+            'tenant_id': tenant_id,
+            'enable_snat': True,
+        }
+        public_router = self.create_router(**router_kwargs)
+        assert public_router
+        _net_cfg.public_router_id = public_router['id']
 
-        return  _net_cfg.public_network_id and (not create_external_router or _net_cfg.public_router_id)
+        if _net_cfg.public_network_id and _net_cfg.public_router_id:
+            return True
 
-    def _get_external_elements(self, routers_client=None):
+        return False
+
+
+    def _get_external_elements(self, routers_client=None, tenant_id=None):
+        if self.net_2_router_map:
+            return self.net_2_router_map
         if not routers_client:
             routers_client = self.handle.os_adm.routers_client
 
         net_filter = {'router:external': True}
         nets = [net['id'] for net in self.handle._list_networks(**net_filter)]
-        router_2_net_map = {}
         routers_resp = routers_client.list_routers()
         for router in routers_resp['routers']:
-            ext_gw_info = router.get('external_gateway_info')
-            if ext_gw_info:
-                net_id = ext_gw_info.get('network_id')
-                if net_id and net_id in nets:
-                    router_2_net_map[router['id']] = net_id
+            net_id = router.get('external_gateway_info', {}).get('network_id')
+            if not net_id or net_id not in nets:
+                continue
+            if tenant_id and tenant_id == router.get('tenant_id'):
+                self.net_2_router_map[net_id] = router['id']
+            elif net_id not in self.net_2_router_map:
+                self.net_2_router_map[net_id] = None
 
-        return router_2_net_map
+        for nets_id in nets:
+            if nets_id not in self.net_2_router_map:
+                self.net_2_router_map[nets_id] = None
+        return self.net_2_router_map
 
     def _delete_external_elements(self, routers_client=None, networks_client=None,
-                                  ports_client=None):
+                                  ports_client=None, tenant_id=None):
         """
         @brief   Look for the external routers & networks and delete them
         """
@@ -418,34 +456,79 @@ class VirtualEnv(object):
         if not networks_client:
             networks_client = self.handle.os_adm.networks_client
 
-        router_2_net_map = self._get_external_elements(routers_client=routers_client)
-        for router_id, network_id in router_2_net_map.items():
-            self.class_logger.debug('Removing external router: (%s)',
-                                    routers_client.show_router(router_id)['router']['name'])
-            self.delete_router(router_id)
+        if not tenant_id:
+            return
 
-            self.class_logger.debug('Removing external network: (%s)',
-                                    networks_client.show_network(network_id)['network']['name'])
-            networks_client.delete_network(network_id)
+        net_2_router_map = self._get_external_elements(routers_client=routers_client, tenant_id=tenant_id)
+        for network_id, router_id in net_2_router_map.items():
+            if router_id:
+                rt_obj = routers_client.show_router(router_id)['router']
+                if tenant_id == rt_obj['tenant_id']:
+                    self.class_logger.debug('Removing external router: (%s)', rt_obj['name'])
+                    self.delete_router(router_id, routers_client, ports_client)
+                else:
+                    self.class_logger.debug('external router: (%s) was not removed', rt_obj['name'])
 
-    def _reuse_public_access(self, mgmt_net, routers_client=None):
+            net_obj = networks_client.show_network(network_id)['network']
+            if tenant_id == net_obj['tenant_id']:
+                self.class_logger.debug('Removing external network: (%s)', net_obj['name'])
+                #TODO: release floating IPs before delete_network
+                networks_client.delete_network(network_id)
+            else:
+                self.class_logger.debug('external network: (%s) was not removed', net_obj['name'])
+
+
+    def _reuse_public_access(self, external_net, routers_client=None, tenant_id=None):
         """
         @brief   Search for the external routers & networks
         """
+        if not tenant_id:
+            return False
+
         if not routers_client:
             routers_client = self.handle.os_adm.routers_client
 
         _net_cfg = self.config.network
-        router_2_net_map = self._get_external_elements(routers_client=routers_client)
-        if router_2_net_map:
-            for router_id, net_id in router_2_net_map.items():
-                rt_obj = routers_client.show_router(router_id)['router']
-                ext_ips = rt_obj['external_gateway_info']['external_fixed_ips']
-                for ip in ext_ips:
-                    if ip['ip_address'] in mgmt_net:
-                        _net_cfg.public_router_id, _net_cfg.public_network_id = router_id, net_id
-                        return True
+        net_2_router_map = self._get_external_elements(routers_client=routers_client, tenant_id=tenant_id)
+        for net_id, router_id in net_2_router_map.items():
+            if not router_id:
+                continue
+            rt_obj = routers_client.show_router(router_id)['router']
+            if tenant_id != rt_obj['tenant_id']:
+                continue
+            ext_ips = rt_obj['external_gateway_info']['external_fixed_ips']
+            with suppress(StopIteration):
+                _net_cfg.public_router_id, _net_cfg.public_network_id = next((router_id, net_id) for ip in ext_ips if ip['ip_address'] in external_net)
+                return True
+
         return False
+
+    def _reuse_public_network(self, external_net, routers_client=None, networks_client=None, tenant_id=None):
+        """
+        @brief   Search for the external network
+        """
+        if not tenant_id:
+            return None
+
+        if not external_net:
+            return None
+
+        if not routers_client:
+            routers_client = self.handle.os_adm.routers_client
+        if not networks_client:
+            networks_client = self.handle.os_adm.networks_client
+
+        net_2_router_map = self._get_external_elements(routers_client=routers_client, tenant_id=tenant_id)
+        for network_id in net_2_router_map:
+            net_network = networks_client.show_network(network_id)['network']
+            for sub_net in net_network['subnets']:
+                if self.handle.os_adm.subnets_client.show_subnet(sub_net)['subnet']['gateway_ip'] in external_net:
+                    #return the first net which meet criteria
+                    self.class_logger.debug('Reusing external network: (%s)', net_network['name'])
+                    return net_network
+
+        return None
+
 
     def create_router(self, routers_client=None, name=None, network_id=None, tenant_id=None,
                       enable_snat=False, **kwargs):
@@ -613,38 +696,21 @@ class VirtualEnv(object):
 
         return port
 
-    def create_public_network(self, routers_client=None, networks_client=None, ports_client=None,
-                              name=None, tenant_id=None, delete_external=False):
+    def create_public_network(self, networks_client=None, name=None, tenant_id=None):
         """Creates a public networks with an optional subnet.
 
-        :param routers_client:
         :param networks_client:
-        :param ports_client:
         :param name:
         :param tenant_id:
-        :param bool delete_external: whether or not to delete already existing networks/routers
         :return: network
         """
 
-        if not routers_client:
-            routers_client = self.handle.os_adm.routers_client
         if not networks_client:
             networks_client = self.handle.os_adm.networks_client
-        if not ports_client:
-            ports_client = self.handle.os_adm.ports_client
-
         if not name:
             name = self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-network')
         if not tenant_id:
             tenant_id = self.tenant_id
-
-        if delete_external:
-            del_external_kwargs = {
-                'routers_client': routers_client,
-                'networks_client': networks_client,
-                'ports_client': ports_client,
-            }
-            self._delete_external_elements(**del_external_kwargs)
 
         network_kwargs = {
             'networks_client': networks_client,
@@ -693,7 +759,7 @@ class VirtualEnv(object):
 
         @param network_id: the network to create the subnet in
         @type  network_id: str
-        @param cidr: IP/mask of the mgmt interface, None for project default
+        @param cidr: IP/mask of the external network interface, None for project default
         @type  cidr: str
         @param mask_bits: subnet mask length in bits
         @type  mask_bits: int
