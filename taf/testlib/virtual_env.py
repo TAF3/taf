@@ -27,7 +27,7 @@ limitations under the License.
 #  "entry_type": "settings",
 #  "instance_type": "settings",
 #  "id": "993",
-#  "images_share_path": "/mnt/berta/oses/openstack",
+#  "images_share_path": "/path/to/openstack/vm/images",
 #  "external_net_gw_ip_cidr": "192.168.31.1/24",
 #  "external_net_pool_start": "100",
 #  "external_net_pool_end": "199",
@@ -349,6 +349,9 @@ class VirtualEnv(object):
             return True
 
         self.class_logger.debug('No reuse')
+        # cleanup
+        self._delete_external_elements()
+
         # create new public network
         public_network_kwargs = {
             'name': name,
@@ -381,12 +384,8 @@ class VirtualEnv(object):
         net_2_router_map = {net['id']: [] for net in self.handle._list_networks(**net_filter)}
         routers_resp = routers_client.list_routers()
         for router in routers_resp['routers']:
-            ext_gw_info = router.get('external_gateway_info')
-            if ext_gw_info:
-                net_id = ext_gw_info.get('network_id')
-                if net_id and net_id in net_2_router_map:
-                    net_2_router_map[net_id].append(router['id'])
-
+            net_id = router.get('external_gateway_info', {}).get('network_id', object())
+            net_2_router_map.get(net_id, []).append(router['id'])
         return net_2_router_map
 
     def _delete_external_elements(self):
@@ -415,13 +414,18 @@ class VirtualEnv(object):
         subnets = self.handle._list_subnets()
         net_filter = {'router:external': True}
         nets = self.handle._list_networks(**net_filter)
-        if len(nets) == 1:
+        try:
+            net = nets.pop(0)
+            assert not nets
+        except (IndexError, AssertionError):
             # if multiple external network, we need to cleanup all
-            for subnet_id in nets[0]['subnets']:
-                subnet = [sub for sub in subnets if sub['id'] == subnet_id]
-                if subnet and subnet[0]['gateway_ip'] and subnet[0]['gateway_ip'] in net_ip:
-                    self.config.network.public_network_id = nets[0]['id']
-                    return True
+            return False
+
+        for subnet_id in net['subnets']:
+            subnet_gateway_ip = next((sub for sub in subnets if sub['id'] == subnet_id), {}).get('gateway_ip')
+            if subnet_gateway_ip and subnet_gateway_ip in net_ip:
+                self.config.network.public_network_id = nets[0]['id']
+                return True
         return False
 
     def create_router(self, routers_client=None, name=None, network_id=None, tenant_id=None,
@@ -602,8 +606,6 @@ class VirtualEnv(object):
             name = self.tempest_lib.common.utils.data_utils.rand_name('tempest-public-network')
         if not tenant_id:
             tenant_id = self.tenant_id
-
-        self._delete_external_elements()
 
         network_kwargs = {
             'name': name,
