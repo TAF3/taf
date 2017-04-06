@@ -384,8 +384,11 @@ class VirtualEnv(object):
         net_2_router_map = {net['id']: [] for net in self.handle._list_networks(**net_filter)}
         routers_resp = routers_client.list_routers()
         for router in routers_resp['routers']:
-            net_id = router.get('external_gateway_info', {}).get('network_id', object())
-            net_2_router_map.get(net_id, []).append(router['id'])
+            ext_gateway = router.get('external_gateway_info', {})
+            # external_gateway_info always exists and can be None
+            if ext_gateway:
+                net_id = ext_gateway.get('network_id', object())
+                net_2_router_map.get(net_id, []).append(router['id'])
         return net_2_router_map
 
     def _delete_external_elements(self):
