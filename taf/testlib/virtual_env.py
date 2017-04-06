@@ -424,7 +424,7 @@ class VirtualEnv(object):
         for subnet_id in net['subnets']:
             subnet_gateway_ip = next((sub for sub in subnets if sub['id'] == subnet_id), {}).get('gateway_ip')
             if subnet_gateway_ip and subnet_gateway_ip in net_ip:
-                self.config.network.public_network_id = nets[0]['id']
+                self.config.network.public_network_id = net['id']
                 return True
         return False
 
