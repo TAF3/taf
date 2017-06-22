@@ -20,6 +20,7 @@
 
 import sys
 import traceback
+import itertools
 
 from . import loggers
 
@@ -245,6 +246,7 @@ class OpenStackNoSuchImage(Exception):
 
 class SshExecCommandFailed(Exception):
     def __init__(self, command, ret):
+        super(SshExecCommandFailed, self).__init__()
         self.cmd = command
         self.ret = ret
 
@@ -269,27 +271,3 @@ class TrexException(TGException):
 
     """
     pass
-
-
-class CmdArgsException(CustomException):
-    """Base class to handle command arguments exceptions with basic introspection.
-
-    """
-    pass
-
-
-class UnknownArguments(CmdArgsException):
-    def __init__(self, **kwargs):
-        if kwargs:
-            _unk_args = ['"{}"'.format(k) for k in kwargs]
-            _unk_args_str = ', '.join(_unk_args)
-            self.parameter = 'Unknown arguments({0}): {1}'.format(len(_unk_args), _unk_args_str)
-
-
-class ArgumentsCollision(CmdArgsException):
-    def __init__(self, **kwargs):
-        if kwargs:
-            _coll_args = ['{0[0]!r}:{0[1]!r}'.format(item) for item in kwargs.items()]
-            _coll_args_str = ', '.join(_coll_args)
-            self.parameter = "Colliding arguments({0}): {1}".format(len(_coll_args),
-                                                                    _coll_args_str)

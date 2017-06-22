@@ -26,7 +26,7 @@ Note:
 
 import re
 
-from testlib.custom_exceptions import CmdArgsException
+from testlib.linux.commands import cmd_exceptions as cmd_ex
 
 
 class Dpdk(object):
@@ -59,16 +59,19 @@ class Dpdk(object):
         """
         if bind_action == 'bind':
             # Action 'bind' mandatory arguments: ifaces, drv
-            if not (ifaces or drv):
-                raise CmdArgsException("Wrong command options specified.")
+            arg_dict = {'ifaces': ifaces, 'drv': drv}
+            not_set_iter = (k for k, v in arg_dict.items() if not v)
+            cmd_ex.ArgumentsNotSet.raise_on_true(list(not_set_iter))
         elif bind_action == 'unbind':
             # Action 'unbind' mandatory arguments: ifaces
-            if drv or not ifaces:
-                raise CmdArgsException("Wrong command options specified.")
+            if not ifaces:
+                raise cmd_ex.ArgumentsNotSet('ifaces')
+            if drv:
+                raise cmd_ex.ArgumentsCollision(ifaces=ifaces, drv=drv)
         else:
             # If action not in ['bind', 'unbind'], it is expected that show_status=True
             if not show_status:
-                raise CmdArgsException("Wrong command options specified.")
+                raise cmd_ex.ArgumentsNotSet('show_status')
 
         ifaces = ifaces if ifaces else []
 

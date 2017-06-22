@@ -23,6 +23,7 @@ import os
 import time
 import random
 import itertools
+import functools
 from xmlrpc.client import Fault as XMLRPCFault
 from collections import OrderedDict
 import functools
@@ -2033,3 +2034,167 @@ def apply_action_and_add_finalizer(request, targets, action, reaction):
     for a_target in targets:
         action(a_target)
         request.addfinalizer(functools.partial(reaction, a_target))
+
+
+def func_count(mapper, start=0, step=1, sentinel=None):
+    """
+    Wrapper around `itertools.count` with the added functionality to transform the generated data
+    """
+    it = itertools.count(start, step)
+
+    def inner():
+        i = next(it)
+        return mapper(i)
+    return iter(inner, sentinel)
+
+
+def iranges(start=0, step=1, size=0, sentinel=None):
+    def inner(low):
+        return low, low + size
+    return func_count(inner, start=start, step=step, sentinel=sentinel)
+
+
+_LOCAL_DEFAULT = object()
+
+
+def chunkwise(iterable, chunk_length=2, advance_count=None, chunk_increment=1, longest=False,
+              chunk_type=tuple):
+    """
+    @brief: Break an iterable down into a floating sequence of chunks of specified length
+    @param iterable: iterable to break down to chunks
+    @type  iterable: iterator
+    @param chunk_length: number of items in a signle chunk
+    @type  chunk_length: int
+    @param advance_count: number of next's for every item from one chunk to another
+    @type  advance_count: int
+    @param chunk_increment: number of next's between items within a single chunk
+    @type  chunk_increment: int
+    @param longest: generate chunks of full (chunk_length) length only, stop once not met
+    @type  longest: bool
+    @param chunk_type: type of the chunks of items to be generated
+    @tyype  groupt_type: type
+    @returns: iterator to the sequence of chunks
+    @rtype: iterator
+
+    @examples:
+        chunkwise('ABCDE', 2, 1, 1, True) => [('A', 'B'), ('B', 'C'), ('C', 'D'), ('D', 'E'), ('E', )]
+        chunkwise('ABCDE', 2, 1, 1) =>       [('A', 'B'), ('B', 'C'), ('C', 'D'), ('D', 'E')]
+        chunkwise('ABCDE', 2, 2, 1, True) => [('A', 'B'), ('C', 'D'), ('E', )]
+        chunkwise('ABCDE', 3, 2, 1, True) => [('A', 'B', 'C'), ('C', 'D', 'E'), ('E', )]
+        chunkwise('ABCDE', 2, 4, 1, True) => [('A', 'B'), ('E',)]
+        chunkwise('ABCDE', 2, 3, 1, True) => [('A', 'B'), ('D', 'E')]
+        chunkwise('ABCDE', 4, 2, 1, True) => [('A', 'B', 'C', 'D'), ('C', 'D', 'E'), ('E', )]
+        chunkwise('ABCDE', 4, 2, 1) =>       [('A', 'B', 'C', 'D')]
+
+        chunkwise('ABCDE', 4, -2, 2, True) => ValueError
+        chunkwise('ABCDE', 4, 2, 2, True)  => [('A', 'C', 'E'), ('C', 'E'), ('E',)]
+        chunkwise('ABCDE', 4, 2, 2, False) => []
+        chunkwise('ABCDE', 2, 1, 2, True)  => [('A', 'C'), ('B', 'D'), ('C', 'E'), ('D',), ('E',)]
+        chunkwise('ABCDE', 2, 1, 2)        => [('A', 'C'), ('B', 'D'), ('C', 'E')]
+    """
+    if not(chunk_length > 0):
+        raise ValueError("'chunk_length' > 0 not met")
+    if advance_count is None:
+        advance_count = chunk_length
+    if not(advance_count > 0):
+        raise ValueError("'advance_count' >= 0 not met")
+    if not(chunk_increment >= 0):
+        raise ValueError("'chunk_increment' >= 0 not met")
+
+    advance_count -= 1  # adjust advance count based on tee behavior
+
+    def take_while(value):
+        return longest or len(value) == chunk_length
+
+    def inner():
+        value_iter = (next(tee_iter, _LOCAL_DEFAULT) for tee_iter in tee_iter_list)
+        result = chunk_type(value for value in value_iter if value is not _LOCAL_DEFAULT)
+
+        for tee_iter in tee_iter_list:
+            for _ in range(advance_count):
+                next(tee_iter, None)
+        return result
+
+    tee_iter_list = itertools.tee(iterable, chunk_length)
+    for index, tee_iter in enumerate(tee_iter_list):
+        for _ in range(index * chunk_increment):
+            next(tee_iter, None)
+
+    return itertools.takewhile(take_while, iter(inner, chunk_type()))
+
+
+def chunkwise_longest(iterable, chunk_length=2, advance_count=None, chunk_type=tuple):
+    return chunkwise(iterable, chunk_length, advance_count, True, chunk_type)
+
+
+def chunker(*args, **kwargs):
+    """
+    @brief:  Wrapper around `chunkwise` locking away evrything but `iterable`, which is delegated
+             down to the wrapped function.
+    """
+    @functools.wraps(chunkwise)
+    def f(iterable):
+        return chunkwise(iterable, *args, **kwargs)
+    return f
+
+
+to_pairs = chunker(chunk_length=2)
+
+
+def attrsetter(*args, **kwargs):
+    """
+    @brief:  `operator` like callable wrapper around an operator function (setattr)
+             setting attributes on an object. Antisymmetric to operator.attrgetter
+    @param args: sequence of (key, value) pairs in a list treated pariwise
+    @type  args: *
+    @param kwargs: dict of (key, value) pairs
+    @type  kwargs: **
+    """
+    def f(obj):
+        for a, v in itertools.chain(to_pairs(args), kwargs.items()):
+            setattr(obj, a, v)
+        return obj
+    return f
+
+
+def itemsetter(*args, **kwargs):
+    """
+    @brief:  `operator` like wrapper callable around an operator function (indexing + assignment)
+             setting items on an object. Antisymmetric to operator.itemgetter
+    @param args: sequence of (key, value) pairs in a list treated pairwise
+    @type  args: *
+    @param kwargs: dict of (key, value) pairs
+    @type  kwargs: **
+    """
+    def f(obj):
+        for i, v in itertools.chain(to_pairs(args), kwargs.items()):
+            obj[i] = v
+        return obj
+    return f
+
+
+def chain_operator(obj, *operators):
+    """
+    @brief:  Chained operator function calls on an object similar to `functools.reduce` only with
+             flexible `function` argument
+    @param obj: object to perform the operations on
+    @type  obj: object
+    @param operators: sequence of operator function calls on the object `obj`
+    @type  operators: *
+    @returns: the final object state of `obj`
+    @rtype: object
+    """
+    for op in operators:
+        obj = op(obj)
+    return obj
+
+
+def operator_chainer(*operators):
+    """
+    @brief:  Wrapper around `chain_oeprator` locking away evrything but `obj`, which is delegated
+             down to the wrapped function.
+    """
+    @functools.wraps(chain_operator)
+    def f(obj):
+        return chain_operator(obj, *operators)
+    return f

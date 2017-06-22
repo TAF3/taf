@@ -20,8 +20,9 @@
 
 import sys
 import os
-from itertools import chain
+import argparse
 
+from itertools import chain
 
 _PLUGIN_NAME = "_tempest"
 
@@ -36,6 +37,18 @@ def prepend_path(path):
 # need to add plugins.pytest_tempest to conftest.py in tempest test directory
 
 
+class ReuseVenvAction(argparse.Action):
+    """
+    """
+    CHOICES = {
+        'true': True,
+        'false': False,
+    }
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, self.CHOICES[values])
+
+
 def pytest_addoption(parser):
     """Tempest specific options.
 
@@ -48,11 +61,12 @@ def pytest_addoption(parser):
         },
         '--reuse_venv': {
             'action': 'store',
-            'default': 'True',
-            'choices': ['True', 'False'],
+            'default': 'true',
+            'action': ReuseVenvAction,
             'help': "Reuse(=True) or Delete(=False) existing public networks/routers\
             , '%default' by default.",
-        },
+            'choices': ReuseVenvAction.CHOICES,
+        }
     }
 
     for opt, opt_kwargs in options.items():

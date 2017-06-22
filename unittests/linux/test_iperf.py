@@ -23,11 +23,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from testlib.custom_exceptions import UnknownArguments, ArgumentsCollision
-
-from testlib.linux.iperf import iperf_cmd
-
 from testlib.linux.iperf import Iperf, IPerfParser, Line
+from testlib.linux.iperf import iperf_cmd
+from testlib.linux.commands import cmd_exceptions as cmd_ex
+
 from testlib.cli_template import CmdStatus
 
 CLIENT_SINGLETHREAD = """
@@ -325,15 +324,17 @@ class TestIperf(object):
         return self._parse_linux_cmd(commands[0], name='iperf')
 
     def test_iperf_runner_start_empty(self, runner):
-        with pytest.raises(ArgumentsCollision):
+        with pytest.raises(cmd_ex.ArgumentsCollision):
             runner.start()
 
     def test_iperf_runner_start_unknown(self, runner):
-        with pytest.raises(UnknownArguments):
-            runner.start(unknown_argument=object())
+        with pytest.raises(cmd_ex.UnknownArguments):
+            cmd = iperf_cmd.CmdIperf.from_kwargs(server=True, unknown_argument=object())
+            cmd.check_args()
+            runner.start(command=cmd)
 
     def test_iperf_runner_start_server_and_client(self, runner):
-        with pytest.raises(ArgumentsCollision):
+        with pytest.raises(cmd_ex.ArgumentsCollision):
             runner.start(server=True, client='localhost')
 
     def test_iperf_runner_start_server_empty(self, runner):
@@ -350,7 +351,7 @@ class TestIperf(object):
         iperf_kwargs = {
             'server': True,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': True,
         }
@@ -360,7 +361,7 @@ class TestIperf(object):
         output_dict = {
             'server': None,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': None,
         }
@@ -381,7 +382,7 @@ class TestIperf(object):
             {
                 'server': True,
                 # 'bind': '192.168.1.10',
-                'format': 'g',
+                'format': 'M',
                 'interval': 1,
                 'udp': True,
             },
@@ -393,7 +394,7 @@ class TestIperf(object):
         output_dict = {
             'server': None,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': None,
         }
@@ -413,7 +414,7 @@ class TestIperf(object):
         iperf_cmd_kwargs = {
             'server': True,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': True,
         }
@@ -423,7 +424,7 @@ class TestIperf(object):
         output_dict = {
             'server': None,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': None,
         }
@@ -443,13 +444,13 @@ class TestIperf(object):
         iperf_cmd_kwargs = {
             'server': True,
             'bind': '192.168.2.20',
-            'format': 'g',
+            'format': 'M',
             'interval': 10,
             'udp': True,
         }
         iperf_kwargs = dict(
             iperf_cmd_kwargs,
-            options=['--format', 'k',
+            options=['--format', 'M',
                      '--interval', '100'],
             command=iperf_cmd.CmdIperf(server=True,
                                        interval=1000,
@@ -461,7 +462,7 @@ class TestIperf(object):
         output_dict = {
             'server': None,
             'bind': '192.168.2.2',
-            'format': 'k',
+            'format': 'M',
             'interval': 1000,
             'udp': None,
         }
@@ -492,7 +493,7 @@ class TestIperf(object):
             'client': '192.168.1.11',
             'parallel': 2,
             'bind': '192.168.1.10',
-            'format': 'k',
+            'format': 'M',
             'interval': 1,
             'udp': True,
         }
@@ -503,7 +504,7 @@ class TestIperf(object):
             'client': '192.168.1.11',
             'parallel': 2,
             'bind': '192.168.1.10',
-            'format': 'k',
+            'format': 'M',
             'interval': 1,
             'udp': None,
         }
@@ -527,8 +528,8 @@ class TestIperf(object):
         iperf_kwargs = dict(
             iperf_cmd_kwargs,
             options=['--udp',
-                     '--format', 'k',
-                     '--bind', '192.168.1.10'],
+                     '--format', 'M',
+                     '--bind', '192.168.1.10']
         )
         runner_kwargs = dict(iperf_kwargs)
 
@@ -536,8 +537,8 @@ class TestIperf(object):
         output_dict = {
             'client': '192.168.1.11',
             'bind': '192.168.1.10',
-            'format': 'k',
-            'udp': None,
+            'format': 'M',
+            'udp': None
         }
         output_map = {
             'client': '--client',
@@ -558,7 +559,7 @@ class TestIperf(object):
             'parallel': 2,
             'time': 10,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': True,
         }
@@ -572,7 +573,7 @@ class TestIperf(object):
             'parallel': 2,
             'time': 10,
             'bind': '192.168.1.10',
-            'format': 'g',
+            'format': 'M',
             'interval': 1,
             'udp': None,
         }
@@ -629,14 +630,13 @@ class TestIperf(object):
     def test_iperf_runner_parse_gbytes_format(self, runner):
         iperf_kwargs = {
             'server': True,
-            'format': 'G',
+            'format': 'M'
         }
         runner_kwargs = dict(iperf_kwargs)
         iperf_instance = runner.start(**runner_kwargs)
         assert iperf_instance
 
-        cmd = runner.instances[iperf_instance]['iperf_cmd']
-        _format = cmd.get('format', 'M')
+        _format = 'G'
         output = runner.parse(CLIENT_SINGLETHREAD, units=_format)
         assert output == [Line((0.0, 1.0), 3.95, 'GBytes', 34.0 / 8, 'GBytes'),
                           Line((1.0, 2.0), 3.97, 'GBytes', 34.1 / 8, 'GBytes'),

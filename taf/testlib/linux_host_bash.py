@@ -27,6 +27,7 @@ from collections import ChainMap
 
 import pytest
 
+from testlib import loggers
 from testlib.helpers import group_get
 from testlib.linux_host_interface import LinuxHostInterface
 from testlib.custom_exceptions import SwitchException, UICmdException, UIException
@@ -63,6 +64,8 @@ STAT_MAP = {
     "RxUcstPktsNonIP": "cntRxUcstPktsNonIP",
     "TxUcstPktsIPv4": "cntTxUcstPkts",
 }
+
+mod_logger = loggers.module_logger(name=__name__)
 
 
 class LinuxHostBash(LinuxHostInterface):
@@ -985,8 +988,6 @@ class LinuxHostBash(LinuxHostInterface):
                         _port['ip_addr'][index] = str(ipaddr.IPv4Address(value))
             except ValueError:
                 raise SwitchException('Configured IP Address does not appear to be valid')
-            except:
-                raise SwitchException('No switch ports found.')
 
         return ports
 
